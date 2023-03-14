@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 import collections
 import os
 import pathlib
@@ -70,7 +71,7 @@ async def dump_message_info(message: types.Message):
 
 @dp.message_handler(lambda message: message.chat.id in config.allowed_chat_id)
 async def send_chatgpt_response(message: types.Message):
-    ## rich.print(message)
+    ##print(message)
 
     # if last message is a single word, ignore it
     args = message.parse_entities()
@@ -79,6 +80,11 @@ async def send_chatgpt_response(message: types.Message):
         return
 
     message_chain = extract_message_chain(message, bot.id)
+
+    if not any(msg['role'] == 'assistant' for msg in message_chain):
+        if len(message_chain) > 1 and random.random() < 0.95:
+            # podpizdnut mode guard
+            return
     if len(message_chain) == 1 and message.chat.id < 0:
         if not any(config.me in x for x in args):
             # nobody mentioned me, so I shut up
@@ -87,7 +93,7 @@ async def send_chatgpt_response(message: types.Message):
         # we are either in private messages, or there's a continuation of a thread
         pass
 
-    messages_to_send = config.setup
+    messages_to_send = config.setup[:]
 
     ## print(message_chain)
     ## print('processing a chain of', len(message_chain), 'messages in chat', message.chat.id)
@@ -96,7 +102,7 @@ async def send_chatgpt_response(message: types.Message):
 
     await message.chat.do('typing')
     response = openai.ChatCompletion.create(model=config.model, messages=messages_to_send)
-    await message.answer(response['choices'][0]['message']['content'])
+    await message.reply(response['choices'][0]['message']['content'])
 
 
 if __name__ == '__main__':
