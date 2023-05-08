@@ -1,44 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 import logging
 import os
-import pathlib
 import random
-from dataclasses import dataclass
+from config import Config
 
 import openai
-import yaml
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import F
+from aiogram import Bot, Dispatcher, html, types
+from aiogram.filters import Command
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
 API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
-YAML_CONFIG = os.getenv('BOT_CONFIG_YAML')
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+bot = Bot(token=API_TOKEN, parse_mode='HTML')
+dp = Dispatcher()
 
-@dataclass
-class Config:
-    setup: list[dict[str, str]]
-    allowed_chat_id: list[int]
-    me: str
-    model: str
-
-    @classmethod
-    def read_yaml(cls, fname) -> Config:
-        with pathlib.Path(fname).open() as fp:
-            config = yaml.safe_load(fp)
-        return cls(
-            setup=config['setup'],
-            me=config['me'],
-            model=config['model'],
-            allowed_chat_id=config['allowed_chat_id'],
-        )
-
-config = Config.read_yaml(YAML_CONFIG)
+config = Config.read_yaml(path=os.getenv('BOT_CONFIG_YAML'))
 
 
 def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
@@ -62,16 +44,36 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
     ]
 
 
-@dp.message_handler(commands=['blerb'])
+@dp.message(Command(commands=['blerb'], ignore_mention=True))
 async def dump_message_info(message: types.Message):
-    print(message)
-    print(message.chat.id)
+    print('incoming blerb from', message.chat.id)
     await message.reply(message.chat.id)
 
 
-@dp.message_handler(commands=['pic'])
-async def gimme_pic(message: types.Message):
-    _, prompt = message.get_full_command()
+@dp.message(config.filter_chat_allowed, Command(commands=['prompt']))
+async def dump_set_prompt(message: types.Message, command: types.CommandObject):
+    new_prompt = command.args
+    if not new_prompt:
+        version = config.version
+        prompt = config.prompt_message_for_user(message.chat.id)['content']
+        lines = [
+            'Current prompt:',
+            html.code(prompt),
+            f'config version {html.underline(version)}',
+        ]
+        await message.reply('\n\n'.join(lines))
+        return
+
+    success = config.override_prompt_for_chat(message.chat.id, new_prompt)
+    if success:
+        await message.answer('okie-dokie 👌 prompt изменён но нет никаких гарантий что это надолго')
+    else:
+        await message.answer('nope 🙅')
+
+
+@dp.message(config.filter_chat_allowed, Command(commands=['pic']))
+async def gimme_pic(message: types.Message, command: types.CommandObject):
+    prompt = command.args
     await message.chat.do('upload_photo')
     try:
         response = openai.Image.create(
@@ -80,7 +82,7 @@ async def gimme_pic(message: types.Message):
             size='512x512',
         )
     except openai.error.InvalidRequestError:
-        messages_to_send = config.setup[:]
+        messages_to_send = [config.prompt_message_for_user(message.chat.id)]
         messages_to_send.append(
             {
                 'role': 'user',
@@ -91,19 +93,20 @@ async def gimme_pic(message: types.Message):
         try:
             response = openai.ChatCompletion.create(model=config.model, messages=messages_to_send)
         except openai.error.RateLimitError as e:
-            await message.answer(f'Кажется я подустал и откнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
+            await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
         else:
             await message.answer(response['choices'][0]['message']['content'])
     else:
         await message.chat.do('upload_photo')
-        image_url = response['data'][0]['url']
-        await message.answer_photo(image_url)
+        image_from_url = types.URLInputFile(response['data'][0]['url'])
+        caption = f'DALL-E prompt: {prompt}'
+        await message.answer_photo(image_from_url, caption=caption)
 
 
-@dp.message_handler(lambda message: message.chat.id in config.allowed_chat_id)
+@dp.message(F.text, config.filter_chat_allowed)
 async def send_chatgpt_response(message: types.Message):
     # if last message is a single word, ignore it
-    args = message.parse_entities()
+    args = message.text
     args = args.split()
     if len(args) == 1:
         return
@@ -116,7 +119,6 @@ async def send_chatgpt_response(message: types.Message):
             print('uuf')
             return
 
-    print('hello?')
     if len(message_chain) == 1 and message.chat.id < 0:
         if not any(config.me in x for x in args):
             # nobody mentioned me, so I shut up
@@ -125,12 +127,10 @@ async def send_chatgpt_response(message: types.Message):
         # we are either in private messages, or there's a continuation of a thread
         pass
 
-    messages_to_send = config.setup[:]
+    messages_to_send = [config.prompt_message_for_user(message.chat.id), *message_chain]
 
     ## print(message_chain)
     ## print('processing a chain of', len(message_chain), 'messages in chat', message.chat.id)
-
-    messages_to_send.extend(message_chain)
 
     await message.chat.do('typing')
     try:
@@ -141,5 +141,9 @@ async def send_chatgpt_response(message: types.Message):
         await message.reply(response['choices'][0]['message']['content'])
 
 
+async def main():
+    await dp.start_polling(bot)
+
+
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(main())

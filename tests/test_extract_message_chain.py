@@ -19,6 +19,7 @@ def mock_solo_message(user1_id, mocker):
     msg = mocker.Mock(spec=types.Message)
     msg.text = 'solo message'
     msg.reply_to_message = None
+    msg.from_user = mocker.Mock(spec=types.User)
     msg.from_user.id = user1_id
     return msg
 
@@ -40,36 +41,43 @@ def mock_thread(user1_id, bot_id, mocker):
     u1 = mocker.Mock(spec=types.Message)
     u1.text = 'first message'
     u1.reply_to_message = None
+    u1.from_user = mocker.Mock(spec=types.User)
     u1.from_user.id = user1_id
 
     u2 = mocker.Mock(spec=types.Message)
     u2.text = 'second message'
     u2.reply_to_message = u1
+    u2.from_user = mocker.Mock(spec=types.User)
     u2.from_user.id = user1_id
 
     u3 = mocker.Mock(spec=types.Message)
     u3.text = 'third message. tag bot here @tag_bot'
     u3.reply_to_message = u2
+    u3.from_user = mocker.Mock(spec=types.User)
     u3.from_user.id = user1_id
 
     a1 = mocker.Mock(spec=types.Message)
     a1.text = 'fourth message. (1st response from assistant)'
     a1.reply_to_message = u3
+    a1.from_user = mocker.Mock(spec=types.User)
     a1.from_user.id = bot_id
 
     u4 = mocker.Mock(spec=types.Message)
     u4.text = 'fifth message'
     u4.reply_to_message = a1
+    u4.from_user = mocker.Mock(spec=types.User)
     u4.from_user.id = user1_id
 
     a2 = mocker.Mock(spec=types.Message)
     a2.text = 'sixth message. (2nd response from assistant)'
     a2.reply_to_message = u4
+    a2.from_user = mocker.Mock(spec=types.User)
     a2.from_user.id = bot_id
 
     u5 = mocker.Mock(spec=types.Message)
     u5.text = 'FINAL seventh message. The one that we recieved'
     u5.reply_to_message = a2
+    u5.from_user = mocker.Mock(spec=types.User)
     u5.from_user.id = user1_id
 
     return [u1, u2, u3, a1, u4, a2, u5]

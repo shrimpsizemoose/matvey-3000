@@ -7,10 +7,12 @@ Very simple implementation of a private bot that responds to short chat messages
 ### 0. Install packages
 
 ```
-pip install openai pyyaml aiogram
+pip install openai pyyaml
+pip install -U --pre aiogram
 ```
 
-this tested with python3.10, but should work with python3.8 as well
+this tested with python3.10, but should work with python3.9 as well.
+Also make sure you use aiogram version 3 (~ tested on aiogram==3.0.0b7)
 
 ### 1. Set environmental variables 
 
