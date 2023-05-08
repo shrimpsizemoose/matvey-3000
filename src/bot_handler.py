@@ -9,7 +9,7 @@ from config import Config
 
 import openai
 from aiogram import F
-from aiogram import Bot, Dispatcher, html, types
+from aiogram import Bot, Dispatcher, Router, html, types
 from aiogram.filters import Command
 
 openai.api_key = os.getenv('OPENAI_API_KEY')
@@ -18,7 +18,7 @@ API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=API_TOKEN, parse_mode='HTML')
-dp = Dispatcher()
+router = Router()
 
 config = Config.read_yaml(path=os.getenv('BOT_CONFIG_YAML'))
 
@@ -44,13 +44,13 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
     ]
 
 
-@dp.message(Command(commands=['blerb'], ignore_mention=True))
+@router.message(Command(commands=['blerb'], ignore_mention=True))
 async def dump_message_info(message: types.Message):
     print('incoming blerb from', message.chat.id)
     await message.reply(message.chat.id)
 
 
-@dp.message(config.filter_chat_allowed, Command(commands=['prompt']))
+@router.message(config.filter_chat_allowed, Command(commands=['prompt']))
 async def dump_set_prompt(message: types.Message, command: types.CommandObject):
     new_prompt = command.args
     if not new_prompt:
@@ -71,7 +71,7 @@ async def dump_set_prompt(message: types.Message, command: types.CommandObject):
         await message.answer('nope 🙅')
 
 
-@dp.message(config.filter_chat_allowed, Command(commands=['pic']))
+@router.message(config.filter_chat_allowed, Command(commands=['pic']))
 async def gimme_pic(message: types.Message, command: types.CommandObject):
     prompt = command.args
     await message.chat.do('upload_photo')
@@ -103,7 +103,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         await message.answer_photo(image_from_url, caption=caption)
 
 
-@dp.message(F.text, config.filter_chat_allowed)
+@router.message(F.text, config.filter_chat_allowed)
 async def send_chatgpt_response(message: types.Message):
     # if last message is a single word, ignore it
     args = message.text
@@ -142,6 +142,8 @@ async def send_chatgpt_response(message: types.Message):
 
 
 async def main():
+    dp = Dispatcher()
+    dp.include_router(router)
     await dp.start_polling(bot)
 
 
