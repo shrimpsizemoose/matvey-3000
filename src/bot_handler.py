@@ -103,6 +103,21 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         await message.answer_photo(image_from_url, caption=caption)
 
 
+@router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))
+async def translate_ruen(message: types.Message, command: types.CommandObject):
+    prompt_message = config.fetch_translation_prompt_message(command.command)
+    messages_to_send = [prompt_message, {'role': 'user', 'content': command.args}]
+    await message.chat.do('typing')
+    try:
+        response = openai.ChatCompletion.create(model=config.model, messages=messages_to_send)
+    except openai.error.RateLimitError as e:
+        await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
+    except openai.error.InvalidRequestError as e:
+        await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
+    else:
+        await message.reply(response['choices'][0]['message']['content'])
+
+
 @router.message(F.text, config.filter_chat_allowed)
 async def send_chatgpt_response(message: types.Message):
     # if last message is a single word, ignore it
@@ -137,6 +152,8 @@ async def send_chatgpt_response(message: types.Message):
         response = openai.ChatCompletion.create(model=config.model, messages=messages_to_send)
     except openai.error.RateLimitError as e:
         await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
+    except openai.error.InvalidRequestError as e:
+        await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
     else:
         await message.reply(response['choices'][0]['message']['content'])
 
