@@ -20,7 +20,7 @@ jobs:
 
       - name: Get Git SHA
         id: git_sha
-        run: echo "::set-output name=sha::$(git rev-parse --short HEAD)"
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
 
       - name: Login to Github Packages
         uses: docker/login-action@v2
@@ -30,9 +30,10 @@ jobs:
           password: ${{ secrets.GHCR_PAT }}
 
       - name: Build image and push to Github Registry
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./docker/bot.Dockerfile
           tags:
             ghcr.io/shrimpsizemoose/matvey-3000:${{ steps.git_sha.outputs.sha }}
           push: true
