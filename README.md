@@ -2,6 +2,17 @@
 
 Very simple implementation of a private bot that responds to short chat messages. Almost non-existent context awareness
 
+## Using docker-compose to run
+
+Copy matvey-template to matvey.yml, adjust accordingly, copy example docker-compose template and adjust env vars:
+
+```
+cp matvey-template-v2.yml matvey.yml
+cp docker-compose-template.yml docker-compose.yml
+(edit both files)
+docker compose up
+```
+
 ## quickstart quide
 
 ### 0. Install packages

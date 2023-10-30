@@ -94,6 +94,8 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             response = openai.ChatCompletion.create(model=config.model, messages=messages_to_send)
         except openai.error.RateLimitError as e:
             await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
+        except TimeoutError as e:
+            await message.answer(f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}')
         else:
             await message.answer(response['choices'][0]['message']['content'])
     else:
