@@ -98,7 +98,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         except TimeoutError as e:
             await message.answer(f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}')
         else:
-            await message.answer(response['choices'][0]['message']['content'])
+            await message.answer(response.choices[0].message.content)
     else:
         await message.chat.do('upload_photo')
         image_from_url = types.URLInputFile(response['data'][0]['url'])
@@ -118,7 +118,7 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     except openai.InvalidRequestError as e:
         await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
     else:
-        await message.reply(response['choices'][0]['message']['content'])
+        await message.reply(response.choices[0].message.content)
 
 
 @router.message(F.text, config.filter_chat_allowed)
@@ -158,7 +158,7 @@ async def send_chatgpt_response(message: types.Message):
     except openai.InvalidRequestError as e:
         await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
     else:
-        await message.reply(response['choices'][0]['message']['content'])
+        await message.reply(response.choices[0].message.content)
 
 
 async def main():
