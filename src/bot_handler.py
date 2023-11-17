@@ -101,7 +101,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             await message.answer(response.choices[0].message.content)
     else:
         await message.chat.do('upload_photo')
-        image_from_url = types.URLInputFile(response['data'][0]['url'])
+        image_from_url = types.URLInputFile(response.data[0].url)
         caption = f'DALL-E prompt: {prompt}'
         await message.answer_photo(image_from_url, caption=caption)
 
