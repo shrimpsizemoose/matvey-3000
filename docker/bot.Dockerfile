@@ -11,8 +11,10 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install the required packages
-RUN pip install -U --pre aiogram && \
-    pip install openai pyyaml 
+RUN pip install \
+        aiogram==3.1.1 \
+        openai==1.3.2 \
+        pyyaml==6.0
 
 CMD ["python", "/bot/bot_handler.py"]
 
