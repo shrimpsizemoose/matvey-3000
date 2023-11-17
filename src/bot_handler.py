@@ -34,7 +34,10 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
             tmp = cur.reply_to_message
             if tmp is not None:
                 role = 'assistant' if tmp.from_user.id == bot_id else 'user'
-                payload.appendleft((role, tmp.text))
+                if tmp.text:
+                    payload.appendleft((role, tmp.text))
+                elif tmp.caption:
+                    payload.appendleft((role, f'представь картинку с комментарием {tmp.caption}'))
                 cur = tmp
             else:
                 break
@@ -82,7 +85,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         response = client.images.generate(prompt=prompt,
         n=1,
         size='512x512')
-    except openai.InvalidRequestError:
+    except openai.BadRequestError:
         messages_to_send = [config.prompt_message_for_user(message.chat.id)]
         messages_to_send.append(
             {
@@ -93,7 +96,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         await message.chat.do('typing')
         try:
             response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-        except openai.error.RateLimitError as e:
+        except openai.RateLimitError as e:
             await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
         except TimeoutError as e:
             await message.answer(f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}')
@@ -113,9 +116,9 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     await message.chat.do('typing')
     try:
         response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-    except openai.error.RateLimitError as e:
+    except openai.RateLimitError as e:
         await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
-    except openai.InvalidRequestError as e:
+    except openai.BadRequestError as e:
         await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
     else:
         await message.reply(response.choices[0].message.content)
@@ -153,9 +156,9 @@ async def send_chatgpt_response(message: types.Message):
     await message.chat.do('typing')
     try:
         response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-    except openai.error.RateLimitError as e:
+    except openai.RateLimitError as e:
         await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
-    except openai.InvalidRequestError as e:
+    except openai.BadRequestError as e:
         await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
     else:
         await message.reply(response.choices[0].message.content)
