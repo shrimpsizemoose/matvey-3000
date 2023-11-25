@@ -15,6 +15,7 @@ ENV PYTHONUNBUFFERED 1
 RUN pip install \
         aiogram==3.2.0 \
         openai==1.3.5 \
+        anthropic==0.7.4 \
         pyyaml==6.0
 
 CMD ["python", "/bot/bot_handler.py"]

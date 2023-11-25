@@ -53,6 +53,18 @@ async def dump_message_info(message: types.Message):
     await message.reply(f'chat id: {html.code(message.chat.id)}')
 
 
+@router.message(Command(commands=['mode_claude'], ignore_mention=True))
+async def switch_to_claude(message: types.Message):
+    config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_ANTHROPIC)
+    await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_ANTHROPIC}!')
+
+
+@router.message(Command(commands=['mode_chatgpt'], ignore_mention=True))
+async def switch_to_chatgpt(message: types.Message):
+    config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_OPENAI)
+    await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_OPENAI}!')
+
+
 @router.message(config.filter_chat_allowed, Command(commands=['prompt']))
 async def dump_set_prompt(message: types.Message, command: types.CommandObject):
     new_prompt = command.args
@@ -82,7 +94,11 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             )
         )
         await message.chat.do('typing')
-        llm_reply = await TextResponse.generate(config=config, messages=messages_to_send)
+        llm_reply = await TextResponse.generate(
+            config=config,
+            chat_id=message.chat.id,
+            messages=messages_to_send,
+        )
         await message.answer(llm_reply.text)
     else:
         await message.chat.do('upload_photo')
@@ -98,6 +114,7 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     await message.chat.do('typing')
     llm_reply = await TextResponse.generate(
         config=config,
+        chat_id=message.chat.id,
         messages=messages_to_send,
     )
     func = message.reply if llm_reply.success else message.answer
@@ -140,6 +157,7 @@ async def send_llm_response(message: types.Message):
 
     llm_reply = await TextResponse.generate(
         config=config,
+        chat_id=message.chat.id,
         messages=messages_to_send,
     )
     func = message.reply if llm_reply.success else message.answer

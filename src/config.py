@@ -15,15 +15,16 @@ class Config:
     setup: list[dict[str, str]] | dict[str, Any]
     allowed_chat_id: list[int]
     me: str
-    model: str
+    model_chatgpt: str
+    model_anthropic: str
     version: int
-    provider: str
 
     VERSION_ONE = 1
     VERSION_TWO = 2
     VERSION_THREE = 3
 
     PROVIDER_OPENAI = 'openai'
+    PROVIDER_ANTHROPIC = 'anthropic'
 
     @classmethod
     def read_yaml(cls, path) -> Config:
@@ -32,11 +33,20 @@ class Config:
         return cls(
             setup=config['setup'],
             me=config['me'],
-            model=config['model'],
+            model_chatgpt=config.get('model_chatgpt', config.get('model')),
+            model_anthropic=config.get('model_anthropic', config.get('model')),
             allowed_chat_id=config['allowed_chat_id'],
             version=config.get('version', cls.VERSION_ONE),
-            provider=config.get('provider', cls.PROVIDER_OPENAI),
         )
+
+    def model_for_provider(self, provider):
+        # this should be per-chat setting???
+        if self.version < self.VERSION_THREE:
+            return self.model_chatgpt
+        return {
+            self.PROVIDER_OPENAI: self.model_chatgpt,
+            self.PROVIDER_ANTHROPIC: self.model_anthropic
+        }[provider]
 
     async def filter_chat_allowed(self, message) -> bool:
         return message.chat.id in self.allowed_chat_id
@@ -48,25 +58,45 @@ class Config:
         return True
 
     def rich_info(self, chat_id) -> str:
-        prompt = self.prompt_message_for_user(chat_id)['content']
+        _, prompt = self.prompt_message_for_user(chat_id)
+        provider = self.provider_for_chat_id(chat_id)
+        model = self.model_for_provider(provider)
         lines = [
             'Current prompt:\n',
             html.code(prompt),
             f'\nconfig version {html.underline(self.version)}',
-            f'model: {html.underline(self.model)}',
-            f'provider: {html.underline(self.provider)}',
+            f'model: {html.underline(model)}',
+            f'provider: {html.underline(provider)}',
         ]
         return '\n'.join(lines)
+
+    def provider_for_chat_id(self, chat_id) -> str:
+        if self.version < self.VERSION_THREE:
+            return self.PROVIDER_OPENAI
+        default = self.setup['providers']['default']
+        return self.setup['providers'].get(chat_id, default)
+
+    def override_provider_for_chat_id(self, chat_id, provider) -> str:
+        if self.version < self.VERSION_THREE:
+            return self.PROVIDER_OPENAI
+        self.setup['providers'][chat_id] = provider
+
+    def model_for_chat_id(self, chat_id) -> str:
+        provider = self.provider_for_chat_id(chat_id)
+        return self.model_for_provider(provider)
 
     def prompt_message_for_user(self, chat_id) -> tuple[str, str]:
         """
             for versions below version 2 always return the main setup system message
             assumptions: there's only one "role": "system" message in setup for default
         """
-        if self.version >= self.VERSION_TWO:
+        if self.version == self.VERSION_TWO:
             default = self.setup['default_prompt']
             prompts = self.setup.get('prompts', {chat_id: default})
             return ('system', prompts.get(chat_id, default))
+        if self.version == self.VERSION_THREE:
+            default = self.setup['prompts']['default']
+            return ('system', self.setup['prompts'].get(chat_id, default))
 
         return (
             'system',
