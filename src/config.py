@@ -10,7 +10,6 @@ import yaml
 from aiogram import html
 
 
-
 @dataclass
 class Config:
     setup: list[dict[str, str]] | dict[str, Any]
@@ -59,7 +58,7 @@ class Config:
         ]
         return '\n'.join(lines)
 
-    def prompt_message_for_user(self, chat_id) -> dict[str, str]:
+    def prompt_message_for_user(self, chat_id) -> tuple[str, str]:
         """
             for versions below version 2 always return the main setup system message
             assumptions: there's only one "role": "system" message in setup for default
@@ -67,19 +66,15 @@ class Config:
         if self.version >= self.VERSION_TWO:
             default = self.setup['default_prompt']
             prompts = self.setup.get('prompts', {chat_id: default})
-            return {'role': 'system', 'content': prompts.get(chat_id, default)}
+            return ('system', prompts.get(chat_id, default))
 
-#        if (default := self.setup.get('default_prompt')) is not None:
-#            return {'role': 'system', 'content': default}
-
-        default = {'role': 'system'}
-        for message in self.setup:
-            if message['role'] == 'system':
-                default['content'] = message['content']
-
-        # if no message was found, don't add any defaults, because it's okay
-        # to blow up from here: this means the given config is completely fucked up
-        return default
+        return (
+            'system',
+            [
+                msg for msg in self.setup
+                if msg['role'] == 'system'
+            ][-1]['content'],
+        )
 
     def fetch_translation_prompt_message(self, target_language) -> str:
         en_to_ru = """

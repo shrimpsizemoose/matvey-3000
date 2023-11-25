@@ -6,7 +6,7 @@ VERSION=$(shell git describe --tags)
 BOT_SERVICE_TAG=${REGISTRY}/${NAMESPACE}/${APP}:${VERSION}
 
 run:
-	PYTHONPATH=src python src/bot_handler.py
+	PYTHONPATH=src python -B src/bot_handler.py
 
 @build-bot:
 	docker build -t ${BOT_SERVICE_TAG} -f docker/bot.Dockerfile .

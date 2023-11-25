@@ -7,17 +7,14 @@ import os
 import random
 
 import openai
-from openai import AsyncOpenAI
 
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
 from aiogram.filters import Command
 
 from config import Config
-from chat_completions import TextResponse
+from chat_completions import TextResponse, ImageResponse
 
-
-client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 
@@ -47,10 +44,7 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
         except AttributeError:
             break
     payload.append(('user', last_message_in_thread.text))
-    return [
-        {'role': role, 'content': text}
-        for role, text in payload
-    ]
+    return [(role, text) for role, text in payload]
 
 
 @router.message(Command(commands=['blerb'], ignore_mention=True))
@@ -78,40 +72,31 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     prompt = command.args
     await message.chat.do('upload_photo')
     try:
-        response = await client.images.generate(
-            prompt=prompt,
-            n=1,
-            size='512x512',
-        )
+        response = await ImageResponse.generate(prompt)
     except openai.BadRequestError:
         messages_to_send = [config.prompt_message_for_user(message.chat.id)]
         messages_to_send.append(
-            {
-                'role': 'user',
-                'content': f'объясни трагикомичной шуткой почему OpenAI не может сгенерировать картинку по запросу "{prompt}"',
-            }
+            (
+                'user',
+                f'объясни трагикомичной шуткой почему OpenAI не может сгенерировать картинку по запросу "{prompt}"',  # noqa
+            )
         )
         await message.chat.do('typing')
-        llm_reply = await TextResponse.generate(
-            client=client,
-            config=config,
-            messages=messages_to_send,
-        )
+        llm_reply = await TextResponse.generate(config=config, messages=messages_to_send)
         await message.answer(llm_reply.text)
     else:
         await message.chat.do('upload_photo')
-        image_from_url = types.URLInputFile(response.data[0].url)
+        image_from_url = types.URLInputFile(response.image_url)
         caption = f'DALL-E prompt: {prompt}'
         await message.answer_photo(image_from_url, caption=caption)
 
 
 @router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))
 async def translate_ruen(message: types.Message, command: types.CommandObject):
-    prompt_message = config.fetch_translation_prompt_message(command.command)
-    messages_to_send = [prompt_message, {'role': 'user', 'content': command.args}]
+    prompt_tuple = config.fetch_translation_prompt_message(command.command)
+    messages_to_send = [prompt_tuple, ('user', command.args)]
     await message.chat.do('typing')
     llm_reply = await TextResponse.generate(
-        client=client,
         config=config,
         messages=messages_to_send,
     )
@@ -129,7 +114,7 @@ async def send_llm_response(message: types.Message):
 
     message_chain = extract_message_chain(message, bot.id)
     # print(message_chain)
-    if not any(msg['role'] == 'assistant' for msg in message_chain):
+    if not any(role == 'assistant' for role, _ in message_chain):
         if len(message_chain) > 1 and random.random() < 0.95:
             logging.info('podpizdnut mode fired')
             return
@@ -154,7 +139,6 @@ async def send_llm_response(message: types.Message):
     await message.chat.do('typing')
 
     llm_reply = await TextResponse.generate(
-        client=client,
         config=config,
         messages=messages_to_send,
     )
