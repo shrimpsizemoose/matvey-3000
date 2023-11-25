@@ -1,9 +1,12 @@
 REGISTRY=ghcr.io
 NAMESPACE=shrimpsizemoose
 APP=matvey-3000
-VERSION=0.1.0
+VERSION=$(shell git describe --tags)
 
-BOT_SERVICE_TAG=${REGISTRY}/${NAMESPACE}/matvey:${VERSION}
+BOT_SERVICE_TAG=${REGISTRY}/${NAMESPACE}/${APP}:${VERSION}
+
+run:
+	PYTHONPATH=src python src/bot_handler.py
 
 @build-bot:
 	docker build -t ${BOT_SERVICE_TAG} -f docker/bot.Dockerfile .
@@ -12,3 +15,7 @@ BOT_SERVICE_TAG=${REGISTRY}/${NAMESPACE}/matvey:${VERSION}
 	docker push ${BOT_SERVICE_TAG}
 @test:
 	PYTHONPATH=src pytest -s -vv tests/
+
+echo-version:
+	@echo current version tag is ${VERSION}
+	@echo full tag is ${BOT_SERVICE_TAG}

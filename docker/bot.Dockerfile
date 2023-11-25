@@ -6,14 +6,15 @@ WORKDIR /bot
 
 COPY src/bot_handler.py  /bot/
 COPY src/config.py /bot/
+COPY src/chat_completions.py /bot/
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # Install the required packages
 RUN pip install \
-        aiogram==3.1.1 \
-        openai==1.3.2 \
+        aiogram==3.2.0 \
+        openai==1.3.5 \
         pyyaml==6.0
 
 CMD ["python", "/bot/bot_handler.py"]

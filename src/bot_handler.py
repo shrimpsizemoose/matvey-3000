@@ -5,16 +5,19 @@ import collections
 import logging
 import os
 import random
-from config import Config
 
 import openai
-from openai import OpenAI
+from openai import AsyncOpenAI
 
-client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
 from aiogram.filters import Command
 
+from config import Config
+from chat_completions import TextResponse
+
+
+client = AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 
@@ -52,22 +55,15 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
 
 @router.message(Command(commands=['blerb'], ignore_mention=True))
 async def dump_message_info(message: types.Message):
-    print('incoming blerb from', message.chat.id)
-    await message.reply(message.chat.id)
+    logging.info(f'incoming blerb from {message.chat.id}')
+    await message.reply(f'chat id: {html.code(message.chat.id)}')
 
 
 @router.message(config.filter_chat_allowed, Command(commands=['prompt']))
 async def dump_set_prompt(message: types.Message, command: types.CommandObject):
     new_prompt = command.args
     if not new_prompt:
-        version = config.version
-        prompt = config.prompt_message_for_user(message.chat.id)['content']
-        lines = [
-            'Current prompt:',
-            html.code(prompt),
-            f'config version {html.underline(version)}',
-        ]
-        await message.reply('\n\n'.join(lines))
+        await message.reply(config.rich_info(message.chat.id))
         return
 
     success = config.override_prompt_for_chat(message.chat.id, new_prompt)
@@ -82,9 +78,11 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     prompt = command.args
     await message.chat.do('upload_photo')
     try:
-        response = client.images.generate(prompt=prompt,
-        n=1,
-        size='512x512')
+        response = await client.images.generate(
+            prompt=prompt,
+            n=1,
+            size='512x512',
+        )
     except openai.BadRequestError:
         messages_to_send = [config.prompt_message_for_user(message.chat.id)]
         messages_to_send.append(
@@ -94,14 +92,12 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             }
         )
         await message.chat.do('typing')
-        try:
-            response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-        except openai.RateLimitError as e:
-            await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
-        except TimeoutError as e:
-            await message.answer(f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}')
-        else:
-            await message.answer(response.choices[0].message.content)
+        llm_reply = await TextResponse.generate(
+            client=client,
+            config=config,
+            messages=messages_to_send,
+        )
+        await message.answer(llm_reply.text)
     else:
         await message.chat.do('upload_photo')
         image_from_url = types.URLInputFile(response.data[0].url)
@@ -114,18 +110,17 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     prompt_message = config.fetch_translation_prompt_message(command.command)
     messages_to_send = [prompt_message, {'role': 'user', 'content': command.args}]
     await message.chat.do('typing')
-    try:
-        response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-    except openai.RateLimitError as e:
-        await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
-    except openai.BadRequestError as e:
-        await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
-    else:
-        await message.reply(response.choices[0].message.content)
+    llm_reply = await TextResponse.generate(
+        client=client,
+        config=config,
+        messages=messages_to_send,
+    )
+    func = message.reply if llm_reply.success else message.answer
+    await func(llm_reply.text)
 
 
 @router.message(F.text, config.filter_chat_allowed)
-async def send_chatgpt_response(message: types.Message):
+async def send_llm_response(message: types.Message):
     # if last message is a single word, ignore it
     args = message.text
     args = args.split()
@@ -136,8 +131,7 @@ async def send_chatgpt_response(message: types.Message):
     # print(message_chain)
     if not any(msg['role'] == 'assistant' for msg in message_chain):
         if len(message_chain) > 1 and random.random() < 0.95:
-            # podpizdnut mode
-            print('uuf')
+            logging.info('podpizdnut mode fired')
             return
 
     if len(message_chain) == 1 and message.chat.id < 0:
@@ -145,23 +139,27 @@ async def send_chatgpt_response(message: types.Message):
             # nobody mentioned me, so I shut up
             return
     else:
-        # we are either in private messages, or there's a continuation of a thread
+        # we are either in private messages,
+        # or there's a continuation of a thread
         pass
 
-    messages_to_send = [config.prompt_message_for_user(message.chat.id), *message_chain]
+    messages_to_send = [
+        config.prompt_message_for_user(message.chat.id),
+        *message_chain,
+    ]
 
-    ## print(message_chain)
-    ## print('processing a chain of', len(message_chain), 'messages in chat', message.chat.id)
+    # print('chain of', len(message_chain))
+    # print('in chat', message.chat.id)
 
     await message.chat.do('typing')
-    try:
-        response = client.chat.completions.create(model=config.model, messages=messages_to_send)
-    except openai.RateLimitError as e:
-        await message.answer(f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}')
-    except openai.BadRequestError as e:
-        await message.answer(f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}')
-    else:
-        await message.reply(response.choices[0].message.content)
+
+    llm_reply = await TextResponse.generate(
+        client=client,
+        config=config,
+        messages=messages_to_send,
+    )
+    func = message.reply if llm_reply.success else message.answer
+    await func(llm_reply.text)
 
 
 async def main():

@@ -7,6 +7,8 @@ from typing import Any
 
 import yaml
 
+from aiogram import html
+
 
 
 @dataclass
@@ -16,9 +18,13 @@ class Config:
     me: str
     model: str
     version: int
+    provider: str
 
     VERSION_ONE = 1
     VERSION_TWO = 2
+    VERSION_THREE = 3
+
+    PROVIDER_OPENAI = 'openai'
 
     @classmethod
     def read_yaml(cls, path) -> Config:
@@ -30,6 +36,7 @@ class Config:
             model=config['model'],
             allowed_chat_id=config['allowed_chat_id'],
             version=config.get('version', cls.VERSION_ONE),
+            provider=config.get('provider', cls.PROVIDER_OPENAI),
         )
 
     async def filter_chat_allowed(self, message) -> bool:
@@ -41,12 +48,23 @@ class Config:
         self.setup['prompts'][chat_id] = new_prompt
         return True
 
+    def rich_info(self, chat_id) -> str:
+        prompt = self.prompt_message_for_user(chat_id)['content']
+        lines = [
+            'Current prompt:\n',
+            html.code(prompt),
+            f'\nconfig version {html.underline(self.version)}',
+            f'model: {html.underline(self.model)}',
+            f'provider: {html.underline(self.provider)}',
+        ]
+        return '\n'.join(lines)
+
     def prompt_message_for_user(self, chat_id) -> dict[str, str]:
         """
             for versions below version 2 always return the main setup system message
             assumptions: there's only one "role": "system" message in setup for default
         """
-        if self.version == self.VERSION_TWO:
+        if self.version >= self.VERSION_TWO:
             default = self.setup['default_prompt']
             prompts = self.setup.get('prompts', {chat_id: default})
             return {'role': 'system', 'content': prompts.get(chat_id, default)}
