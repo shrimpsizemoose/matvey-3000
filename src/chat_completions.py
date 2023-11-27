@@ -94,7 +94,7 @@ class TextResponse:
         prompt.append(f'\nRespond ONLY with text and no tags.{bot_tag}')
         prompt = ''.join(prompt)
 
-        print(prompt)
+        #print(prompt)
         try:
             response = await client.completions.create(
                 model=model,
@@ -117,10 +117,11 @@ class TextResponse:
                 text=f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}',  # noqa
             )
         else:
-            print(response.completion)
+            #print(response.completion)
+            completion = response.completion.replace("<", "[").replace(">","]")
             return cls(
                 success=True,
-                text=response.completion,
+                text=completion,
             )
 
 
