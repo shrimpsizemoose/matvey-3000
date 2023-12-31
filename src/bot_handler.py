@@ -37,7 +37,9 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
                 if tmp.text:
                     payload.appendleft((role, tmp.text))
                 elif tmp.caption:
-                    payload.appendleft((role, f'представь картинку с комментарием {tmp.caption}'))
+                    payload.appendleft(
+                        (role, f'представь картинку с комментарием {tmp.caption}')
+                    )
                 cur = tmp
             else:
                 break
@@ -65,6 +67,12 @@ async def switch_to_chatgpt(message: types.Message):
     await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_OPENAI}!')
 
 
+@router.message(Command(commands=['mode_yandex'], ignore_mention=True))
+async def switch_to_yandexgpt(message: types.Message):
+    config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_YANDEXGPT)
+    await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_YANDEXGPT}!')
+
+
 @router.message(config.filter_chat_allowed, Command(commands=['prompt']))
 async def dump_set_prompt(message: types.Message, command: types.CommandObject):
     new_prompt = command.args
@@ -74,7 +82,9 @@ async def dump_set_prompt(message: types.Message, command: types.CommandObject):
 
     success = config.override_prompt_for_chat(message.chat.id, new_prompt)
     if success:
-        await message.answer('okie-dokie 👌 prompt изменён но нет никаких гарантий что это надолго')
+        await message.answer(
+            'okie-dokie 👌 prompt изменён но нет никаких гарантий что это надолго'
+        )
     else:
         await message.answer('nope 🙅')
 

@@ -3,11 +3,14 @@ import textwrap
 from dataclasses import dataclass
 
 import anthropic
+import httpx
 import openai
 
 
 openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 anthro_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+yagpt_folder_id = os.getenv('YANDEXGPT_FOLDER_ID', default='NoYaFolder')
+yagpt_api_key = os.getenv('YANDEXGPT_API_KEY', default='NoYaKey')
 
 
 @dataclass(frozen=True)
@@ -30,18 +33,19 @@ class TextResponse:
                 config.model_for_chat_id(chat_id),
                 messages,
             )
+        elif provider == config.PROVIDER_YANDEXGPT:
+            async with httpx.AsyncClient() as httpx_client:
+                return await cls._generate_yandexgpt(
+                    httpx_client,
+                    config.model_for_chat_id(chat_id),
+                    messages,
+                )
         else:
-            return cls(
-                success=False,
-                text=f'Unsupported provider: {config.provider}'
-            )
+            return cls(success=False, text=f'Unsupported provider: {config.provider}')
 
     @classmethod
     async def _generate_openai(cls, client, model, messages):
-        payload = [
-            {'role': role, 'content': text}
-            for role, text in messages
-        ]
+        payload = [{'role': role, 'content': text} for role, text in messages]
         try:
             response = await client.chat.completions.create(
                 model=model,
@@ -56,7 +60,7 @@ class TextResponse:
             return cls(
                 success=False,
                 text=f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}',  # noqa
-             )
+            )
         except TimeoutError as e:
             return cls(
                 success=False,
@@ -90,11 +94,12 @@ class TextResponse:
                 continue
             prompt.append(f'\n<{role}>{text}</{role}>')
         prompt.append(f'\n{system}')
-        prompt.append('\nTake content of last unpaired "user" and use this as completion prompt.')
+        prompt.append(
+            '\nTake content of last unpaired "user" and use this as completion prompt.'
+        )
         prompt.append(f'\nRespond ONLY with text and no tags.{bot_tag}')
         prompt = ''.join(prompt)
 
-        #print(prompt)
         try:
             response = await client.completions.create(
                 model=model,
@@ -110,18 +115,51 @@ class TextResponse:
             return cls(
                 success=False,
                 text=f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}',  # noqa
-             )
+            )
         except TimeoutError as e:
             return cls(
                 success=False,
                 text=f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}',  # noqa
             )
         else:
-            #print(response.completion)
-            completion = response.completion.replace("<", "[").replace(">","]")
+            # print(response.completion)
+            completion = response.completion.replace("<", "[").replace(">", "]")
             return cls(
                 success=True,
                 text=completion,
+            )
+
+    @classmethod
+    async def _generate_yandexgpt(cls, client, model, messages):
+        params = {
+            'messages': [{'role': role, 'text': text} for role, text in messages],
+            'modelUri': f'gpt://{yagpt_folder_id}/{model}',
+            'completionOptions': {
+                'stream': False,
+                'temperature': 0.6,
+                'maxTokens': "1000",
+            },
+        }
+        headers = {
+            'Authorization': f'Api-Key {yagpt_api_key}',
+            'x-folder-id': yagpt_folder_id,
+        }
+        response = await client.post(
+            'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
+            json=params,
+            headers=headers,
+        )
+        if response.status_code == 200:
+            data = response.json()
+            print(data)
+            return cls(
+                success=True,
+                text=data['result']['alternatives'][0]['message']['text'],
+            )
+        else:
+            return cls(
+                success=False,
+                text=response.text,
             )
 
 
@@ -144,5 +182,3 @@ class ImageResponse:
             size='512x512',
         )
         return cls(success=True, image_url=img_gen_reply.data[0].url)
-
-

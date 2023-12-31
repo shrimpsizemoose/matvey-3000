@@ -17,14 +17,17 @@ class Config:
     me: str
     model_chatgpt: str
     model_anthropic: str
+    model_yandexgpt: str
     version: int
 
     VERSION_ONE = 1
     VERSION_TWO = 2
     VERSION_THREE = 3
+    VERSION_FOUR = 4
 
     PROVIDER_OPENAI = 'openai'
     PROVIDER_ANTHROPIC = 'anthropic'
+    PROVIDER_YANDEXGPT = 'yandexgpt'
 
     @classmethod
     def read_yaml(cls, path) -> Config:
@@ -35,6 +38,7 @@ class Config:
             me=config['me'],
             model_chatgpt=config.get('model_chatgpt', config.get('model')),
             model_anthropic=config.get('model_anthropic', config.get('model')),
+            model_yandexgpt=config.get('model_yandexgpt', config.get('model')),
             allowed_chat_id=config['allowed_chat_id'],
             version=config.get('version', cls.VERSION_ONE),
         )
@@ -45,7 +49,8 @@ class Config:
             return self.model_chatgpt
         return {
             self.PROVIDER_OPENAI: self.model_chatgpt,
-            self.PROVIDER_ANTHROPIC: self.model_anthropic
+            self.PROVIDER_ANTHROPIC: self.model_anthropic,
+            self.PROVIDER_YANDEXGPT: self.model_yandexgpt,
         }[provider]
 
     async def filter_chat_allowed(self, message) -> bool:
@@ -87,23 +92,20 @@ class Config:
 
     def prompt_message_for_user(self, chat_id) -> tuple[str, str]:
         """
-            for versions below version 2 always return the main setup system message
-            assumptions: there's only one "role": "system" message in setup for default
+        for versions below version 2 always return the main setup system message
+        assumptions: there's only one "role": "system" message in setup for default
         """
         if self.version == self.VERSION_TWO:
             default = self.setup['default_prompt']
             prompts = self.setup.get('prompts', {chat_id: default})
             return ('system', prompts.get(chat_id, default))
-        if self.version == self.VERSION_THREE:
+        if self.version >= self.VERSION_THREE:
             default = self.setup['prompts']['default']
             return ('system', self.setup['prompts'].get(chat_id, default))
 
         return (
             'system',
-            [
-                msg for msg in self.setup
-                if msg['role'] == 'system'
-            ][-1]['content'],
+            [msg for msg in self.setup if msg['role'] == 'system'][-1]['content'],
         )
 
     def fetch_translation_prompt_message(self, target_language) -> str:
