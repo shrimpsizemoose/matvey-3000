@@ -49,6 +49,60 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
     return [(role, text) for role, text in payload]
 
 
+async def react(success, message):
+    yes = [
+        '👍',
+        '❤',
+        '🔥',
+        '🥰',
+        '🎉',
+        '🤩',
+        '👌',
+        '🐳',
+        '🌭',
+        '🍌',
+        '🍓',
+        '🍾',
+        '💋',
+        '🤓',
+        '👻',
+        '🤗',
+        '💅',
+        '🆒',
+        '💘',
+        '🦄',
+        '😎',
+        '👾',
+    ]
+    nope = [
+        '👎',
+        '🤔',
+        '🤯',
+        '😱',
+        '🤬',
+        '😢',
+        '🥴',
+        '🌚',
+        '💔',
+        '🤨',
+        '😐',
+        '😴',
+        '😭',
+        '🙈',
+        '😨',
+        '🤪',
+        '🗿',
+        '🙉',
+        '💊',
+        '🙊',
+        '🤷',
+        '😡',
+    ]
+    react = random.choice(yes) if success else random.choice(nope)
+    react = types.reaction_type_emoji.ReactionTypeEmoji(type='emoji', emoji=react)
+    await message.react(reaction=[react])
+
+
 @router.message(Command(commands=['blerb'], ignore_mention=True))
 async def dump_message_info(message: types.Message):
     logging.info(f'incoming blerb from {message.chat.id}')
@@ -110,11 +164,13 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             messages=messages_to_send,
         )
         await message.answer(llm_reply.text)
+        await react(success=False, message=message)
     else:
         await message.chat.do('upload_photo')
         image_from_url = types.URLInputFile(response.image_url)
         caption = f'DALL-E prompt: {prompt}'
         await message.answer_photo(image_from_url, caption=caption)
+        await react(success=True, message=message)
 
 
 @router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))
@@ -129,6 +185,7 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     )
     func = message.reply if llm_reply.success else message.answer
     await func(llm_reply.text)
+    await react(llm_reply.success, message)
 
 
 @router.message(F.text, config.filter_chat_allowed)
@@ -172,6 +229,8 @@ async def send_llm_response(message: types.Message):
     )
     func = message.reply if llm_reply.success else message.answer
     await func(llm_reply.text)
+
+    await react(llm_reply.success, message)
 
 
 async def main():
