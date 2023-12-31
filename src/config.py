@@ -148,4 +148,4 @@ class Config:
         """
         ru_to_en = textwrap.dedent(ru_to_en.strip('\n'))
         prompt = {'ru': en_to_ru, 'en': ru_to_en}.get(target_language)
-        return {'role': 'assistant', 'content': prompt}
+        return ('system', prompt)
