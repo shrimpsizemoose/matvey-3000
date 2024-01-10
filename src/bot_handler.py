@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import logging
 import os
@@ -148,7 +149,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     prompt = command.args
     await message.chat.do('upload_photo')
     try:
-        response = await ImageResponse.generate(prompt)
+        response = await ImageResponse.generate(prompt, mode='dall-e')
     except openai.BadRequestError:
         messages_to_send = [config.prompt_message_for_user(message.chat.id)]
         messages_to_send.append(
@@ -167,10 +168,68 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         await react(success=False, message=message)
     else:
         await message.chat.do('upload_photo')
-        image_from_url = types.URLInputFile(response.image_url)
-        caption = f'DALL-E prompt: {prompt}'
+        image_from_url = types.URLInputFile(response.b64_or_url)
+        caption = f'DALL-E2 prompt: {prompt}'
         await message.answer_photo(image_from_url, caption=caption)
         await react(success=True, message=message)
+
+
+@router.message(config.filter_chat_allowed, Command(commands=['pik']))
+async def gimme_pikk(message: types.Message, command: types.CommandObject):
+    prompt = command.args
+    await message.chat.do('upload_photo')
+    try:
+        response = await ImageResponse.generate(prompt, mode='kandinski')
+    except openai.BadRequestError:
+        messages_to_send = [config.prompt_message_for_user(message.chat.id)]
+        messages_to_send.append(
+            (
+                'user',
+                f'объясни шуткой почему нельзя сгенерировать картинку по запросу "{prompt}"',  # noqa
+            )
+        )
+        await message.chat.do('typing')
+        llm_reply = await TextResponse.generate(
+            config=config,
+            chat_id=message.chat.id,
+            messages=messages_to_send,
+        )
+        await message.answer(llm_reply.text)
+        await react(success=False, message=message)
+    else:
+        await message.chat.do('upload_photo')
+        if response.censored:
+            messages_to_send = [config.prompt_message_for_user(message.chat.id)]
+            messages_to_send.append(
+                (
+                    'user',
+                    f'объясни шуткой почему нельзя сгенерировать картинку по запросу "{prompt}"',  # noqa
+                )
+            )
+            await message.chat.do('typing')
+            llm_reply = await TextResponse.generate(
+                config=config,
+                chat_id=message.chat.id,
+                messages=messages_to_send,
+            )
+            await message.answer(llm_reply.text)
+            await react(success=False, message=message)
+        else:
+            # await message.reply(json.dumps(response, indent=4))
+            caption = f'Kandinksi-3 prompt: {prompt}'
+
+            im_b64 = response.b64_or_url.encode()
+            im_f = base64.decodebytes(im_b64)
+            image = types.BufferedInputFile(
+                im_f,
+                'kandinski.png',
+            )
+
+            await message.answer_photo(
+                photo=image,
+                caption=caption,
+            )
+            await react(success=True, message=message)
 
 
 @router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))

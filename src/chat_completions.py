@@ -1,3 +1,5 @@
+import asyncio
+import json
 import os
 import textwrap
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 anthro_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 yagpt_folder_id = os.getenv('YANDEXGPT_FOLDER_ID', default='NoYaFolder')
 yagpt_api_key = os.getenv('YANDEXGPT_API_KEY', default='NoYaKey')
+kandinski_api_key = os.getenv('KANDINSKI_API_KEY', default='KandiKeyOopsie')
+kandinski_api_secret = os.getenv('KANDINSKI_API_SECRET', default='KandiSecretOopsie')
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,7 @@ class TextResponse:
         prompt.append(f'\nRespond ONLY with text and no tags.{bot_tag}')
         prompt = ''.join(prompt)
 
+        # print(prompt)
         try:
             response = await client.completions.create(
                 model=model,
@@ -151,7 +156,6 @@ class TextResponse:
         )
         if response.status_code == 200:
             data = response.json()
-            print(data)
             return cls(
                 success=True,
                 text=data['result']['alternatives'][0]['message']['text'],
@@ -166,19 +170,81 @@ class TextResponse:
 @dataclass(frozen=True)
 class ImageResponse:
     success: bool
-    image_url: str
+    b64_or_url: str
+    censored: bool = False
 
     @classmethod
-    async def generate(cls, prompt):
-        # no other providers yet so meh
-        openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        return await cls._generate_openai(openai_client, prompt)
+    async def generate(cls, prompt, mode='dall-e'):
+        if mode == 'dall-e':
+            # no other providers yet so meh
+            openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            return await cls._generate_dalle(openai_client, prompt)
+        elif mode == 'kandinski':
+            async with httpx.AsyncClient() as httpx_client:
+                return await cls._generate_kandinski(
+                    httpx_client,
+                    prompt,
+                )
+        else:
+            return cls(success=False, text=f'Unsupported provider: {mode}')
 
     @classmethod
-    async def _generate_openai(cls, client, prompt):
+    async def _generate_dalle(cls, client, prompt):
         img_gen_reply = await client.images.generate(
             prompt=prompt,
             n=1,
             size='512x512',
         )
-        return cls(success=True, image_url=img_gen_reply.data[0].url)
+        return cls(success=True, b64_or_url=img_gen_reply.data[0].url)
+
+    @classmethod
+    async def _generate_kandinski(cls, client, prompt):
+        BASE_URL = 'https://api-key.fusionbrain.ai/key/api/v1'
+        headers = {
+            'X-Key': f'Key {kandinski_api_key}',
+            'x-Secret': f'Secret {kandinski_api_secret}',
+        }
+        # pick model
+        response = await client.get(
+            f'{BASE_URL}/models',
+            headers=headers,
+        )
+        # 2024jan09: only one model supported at the moment anyway
+        model_id = response.json()[0]['id']
+        params = {
+            'type': 'GENERATE',
+            'width': 512,
+            'height': 512,
+            'num_images': 1,
+            'generateParams': {
+                'query': prompt,
+            },
+        }
+        data = {
+            'model_id': (None, str(model_id)),
+            'params': (None, json.dumps(params), 'application/json'),
+        }
+        response = await client.post(
+            f'{BASE_URL}/text2image/run',
+            headers=headers,
+            files=data,
+        )
+        run_id = response.json()['uuid']
+
+        attempts = 10
+        delay = 10
+        while attempts > 0:
+            response = await client.get(
+                f'{BASE_URL}/text2image/status/{run_id}', headers=headers
+            )
+            data = response.json()
+            done = data['status'] == 'DONE'
+            if done:
+                break
+            attempts -= 1
+            await asyncio.sleep(delay)
+        return cls(
+            success=done,
+            b64_or_url=data['images'][0],
+            censored=data['censored'],
+        )
