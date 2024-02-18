@@ -22,8 +22,8 @@ pip install openai pyyaml
 pip install -U --pre aiogram
 ```
 
-this tested with python3.10, but should work with python3.9 as well.
-Also make sure you use aiogram version 3 (~ tested on aiogram==3.0.0b7)
+This project works with python 3.11+.
+Also make sure you use aiogram version 3 (~ tested on aiogram==3.3.0)
 
 ### 1. Set environmental variables 
 
@@ -32,6 +32,9 @@ Also make sure you use aiogram version 3 (~ tested on aiogram==3.0.0b7)
 | `OPENAI_API_KEY` | `'sk-HS1777777777777777777777777777777777777777777771'` | openapi key |
 | `TELEGRAM_API_TOKEN` | `'667778888:AAHmHmHmHmHmHmAAAAAAAAAAAHmHmHmHmHm'` | bot token, get one from BotFather |
 | `BOT_CONFIG_YAML` | `/etc/matvey.yml` | take matvey-template.yml as example |
+| `BOT_CONFIG_TOML` | `/etc/matvey.toml` | take matvey-template.toml as example |
+
+:warning: yaml configuration is derpecated, use toml instead
 
 ### 2. Run the actual script
 

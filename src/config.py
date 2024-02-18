@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import textwrap
+import tomllib
 import pathlib
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
 import yaml
-
-from aiogram import html
 
 
 @dataclass
@@ -31,8 +31,20 @@ class Config:
 
     @classmethod
     def read_yaml(cls, path) -> Config:
+        warnings.warn(
+            "yaml configuration is deprecated and will be removed in future versions. Consider switching to toml",
+            DeprecationWarning,
+        )
         with pathlib.Path(path).open() as fp:
             config = yaml.safe_load(fp)
+
+        version = config.get('version', cls.VERSION_ONE)
+        if version == cls.VERSION_ONE:
+            warnings.warn(
+                f"config version {version} is deprecated and will be removed in the future. Consider upgrading config",
+                DeprecationWarning,
+            )
+
         return cls(
             setup=config['setup'],
             me=config['me'],
@@ -40,8 +52,12 @@ class Config:
             model_anthropic=config.get('model_anthropic', config.get('model')),
             model_yandexgpt=config.get('model_yandexgpt', config.get('model')),
             allowed_chat_id=config['allowed_chat_id'],
-            version=config.get('version', cls.VERSION_ONE),
+            version=version,
         )
+
+    @classmethod
+    def read_toml(cls, path) -> Config:
+        ...
 
     def model_for_provider(self, provider):
         # this should be per-chat setting???
@@ -63,6 +79,8 @@ class Config:
         return True
 
     def rich_info(self, chat_id) -> str:
+        from aiogram import html
+
         _, prompt = self.prompt_message_for_user(chat_id)
         provider = self.provider_for_chat_id(chat_id)
         model = self.model_for_provider(provider)
