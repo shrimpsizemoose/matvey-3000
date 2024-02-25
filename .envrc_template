@@ -1,0 +1,8 @@
+export OPENAI_API_KEY=sk-HS1777777777777777777777777771
+export ANTHROPIC_API_KEY=k-ant-api03-99-jp...Q-6...A..A
+export TELEGRAM_API_TOKEN=667778888:AAHmHmAAAAAAAHmHmHm
+export YANDEXGPT_FOLDER_ID=1g7oooooooooooooooo
+export YANDEXGPT_API_KEY=Qiiii..........iiiiii-rzO
+export KANDINSKI_API_KEY=D53.................0F49F
+export KANDINSKI_API_SECRET=A470B............98942
+export BOT_CONFIG_TOML=$(pwd)/matvey.toml

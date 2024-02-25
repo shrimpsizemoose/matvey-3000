@@ -11,6 +11,7 @@ import openai
 
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command
 
 from config import Config
@@ -21,10 +22,11 @@ API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN, parse_mode='HTML')
+bot_props = DefaultBotProperties(parse_mode='HTML')
+bot = Bot(token=API_TOKEN, default=bot_props)
 router = Router()
 
-config = Config.read_yaml(path=os.getenv('BOT_CONFIG_YAML'))
+config = Config.read_toml(path=os.getenv('BOT_CONFIG_TOML'))
 
 
 def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
@@ -51,54 +53,8 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
 
 
 async def react(success, message):
-    yes = [
-        '👍',
-        '❤',
-        '🔥',
-        '🥰',
-        '🎉',
-        '🤩',
-        '👌',
-        '🐳',
-        '🌭',
-        '🍌',
-        '🍓',
-        '🍾',
-        '💋',
-        '🤓',
-        '👻',
-        '🤗',
-        '💅',
-        '🆒',
-        '💘',
-        '🦄',
-        '😎',
-        '👾',
-    ]
-    nope = [
-        '👎',
-        '🤔',
-        '🤯',
-        '😱',
-        '🤬',
-        '😢',
-        '🥴',
-        '🌚',
-        '💔',
-        '🤨',
-        '😐',
-        '😴',
-        '😭',
-        '🙈',
-        '😨',
-        '🤪',
-        '🗿',
-        '🙉',
-        '💊',
-        '🙊',
-        '🤷',
-        '😡',
-    ]
+    yes = config.positive_emojis
+    nope = config.negative_emojis
     react = random.choice(yes) if success else random.choice(nope)
     react = types.reaction_type_emoji.ReactionTypeEmoji(type='emoji', emoji=react)
     await message.react(reaction=[react])
@@ -151,7 +107,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     try:
         response = await ImageResponse.generate(prompt, mode='dall-e')
     except openai.BadRequestError:
-        messages_to_send = [config.prompt_message_for_user(message.chat.id)]
+        messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
         messages_to_send.append(
             (
                 'user',
@@ -181,7 +137,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
     try:
         response = await ImageResponse.generate(prompt, mode='kandinski')
     except openai.BadRequestError:
-        messages_to_send = [config.prompt_message_for_user(message.chat.id)]
+        messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
         messages_to_send.append(
             (
                 'user',
@@ -199,7 +155,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
     else:
         await message.chat.do('upload_photo')
         if response.censored:
-            messages_to_send = [config.prompt_message_for_user(message.chat.id)]
+            messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
             messages_to_send.append(
                 (
                     'user',
@@ -234,7 +190,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
 
 @router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))
 async def translate_ruen(message: types.Message, command: types.CommandObject):
-    prompt_tuple = config.fetch_translation_prompt_message(command.command)
+    prompt_tuple = config.fetch_translation_prompt_tuple(command.command)
     messages_to_send = [prompt_tuple, ('user', command.args)]
     await message.chat.do('typing')
     llm_reply = await TextResponse.generate(
@@ -272,7 +228,7 @@ async def send_llm_response(message: types.Message):
         pass
 
     messages_to_send = [
-        config.prompt_message_for_user(message.chat.id),
+        config.prompt_tuple_for_chat(message.chat.id),
         *message_chain,
     ]
 

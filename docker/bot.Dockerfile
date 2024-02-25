@@ -1,4 +1,4 @@
-FROM python:3.10-slim-buster
+FROM python:3.11-slim-buster
 
 LABEL org.opencontainers.image.source https://github.com/shrimpsizemoose/matvey-3000
 
@@ -13,10 +13,10 @@ ENV PYTHONUNBUFFERED 1
 
 # Install the required packages
 RUN pip install \
-        aiogram==3.3.0 \
-        openai==1.3.5 \
-        anthropic==0.7.4 \
-        pyyaml==6.0
+        aiogram==3.4.1 \
+        anthropic==0.16.0 \
+        httpx==0.27.0 \
+        openai==1.12.0
 
 CMD ["python", "/bot/bot_handler.py"]
 

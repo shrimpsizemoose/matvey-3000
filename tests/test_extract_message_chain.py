@@ -92,22 +92,25 @@ def mock_last_thread_message(mock_thread):
 def mock_chain_expected(bot_id, user1_id, mock_thread):
     chain = []
     for msg in mock_thread:
-        data = {'content': msg.text}
+        text = msg.text
+        role = ''
         if msg.from_user.id == bot_id:
-            data['role'] = 'assistant'
+            role = 'assistant'
         elif msg.from_user.id == user1_id:
-            data['role'] = 'user'
-        chain.append(data)
+            role = 'user'
+        chain.append((role, text))
     return chain
 
 
 def test_extract_message_chain_solo(bot_id, mock_solo_message):
     got_chain = extract_message_chain(mock_solo_message, bot_id)
 
-    assert got_chain == [{'role': 'user', 'content': mock_solo_message.text}]
+    assert got_chain == [('user', mock_solo_message.text)]
 
 
-def test_extract_message_chain_thread(bot_id, mock_last_thread_message, mock_chain_expected):
+def test_extract_message_chain_thread(
+    bot_id, mock_last_thread_message, mock_chain_expected
+):
     got_chain = extract_message_chain(mock_last_thread_message, bot_id)
 
     assert len(got_chain) == len(mock_chain_expected)

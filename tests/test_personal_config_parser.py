@@ -1,6 +1,6 @@
 import pytest
-import yaml
 import textwrap
+import warnings
 
 from config import Config
 
@@ -27,75 +27,100 @@ def default_prompt():
 
 @pytest.fixture()
 def new_nondefault_prompt():
-    return 'Now nondefault prompt'
+    return 'New nondefault prompt'
 
 
 @pytest.fixture()
-def tmp_path_no_version(tmp_path, bot_me, user1_id, user2_id, default_prompt):
-    yaml_content = f"""
-    ---
-    me: "{bot_me}"
-    model: "gpt-3.5-turbo"
-    setup:
-      - role: system
-        content: {default_prompt}
-    allowed_chat_id:
-      - {user1_id}
-      - {user2_id}
+def tmp_path_toml_config_v4(tmp_path, bot_me, user1_id, user2_id, default_prompt):
+    toml_content = f'''
+    me = "{bot_me}"
+    version = 4
+    positive_emojis = "👍🔥🥰🎉🤩"
+    negative_emojis = "👎🤔🤯🤬💔"
+
+    [models]
+    chatgpt = "gpt-3.5-turbo-1106"
+    anthropic = "claude-2"
+    yandexgpt = "yandexgpt-lite"
+
+    [defaults]
+    provider = "yandexgpt"
+    prompt = """
+    {default_prompt}
     """
-    yaml_content = textwrap.dedent(yaml_content)
-    yaml_file = tmp_path / 'test_config_v1.yaml'
-    yaml_file.write_text(yaml_content)
-    return yaml_file
 
+    [translations]
+    en_to_ru = """
+    You are a bot that just translates all messages from English to Russian.
+    For example, when I write:
+      To h'll wit it
+    You respond:
+      EN: To hell with it
+      RU: К чёрту это
 
-@pytest.fixture()
-def tmp_path_explicit_version_2(tmp_path, bot_me, user1_id, user2_id, default_prompt):
-    yaml_content = f"""
-    ---
-    me: "{bot_me}"
-    model: "gpt-3.5-turbo"
-    version: 2
-    setup:
-      default_prompt: {default_prompt}
-      prompts:
-        {user1_id}: |
-          prompt for chat_id of {user1_id}
-          this chat wants different prompt
-    allowed_chat_id:
-      - {user1_id}
-      - {user2_id}
+      Подобное выражение означает фрустрацию и усталость происходящим.
+      Аккуратно, выражение немного вульгарно
     """
-    yaml_content = textwrap.dedent(yaml_content)
-    yaml_file = tmp_path / 'test_config_v2.yaml'
-    yaml_file.write_text(yaml_content)
-    return yaml_file
+    ru_to_en = """
+    You are a bot that just translates all messages from Russian to English.
+    For example, when I write:
+      Ля какя цаца
+    You respond:
+      RU: Ля какая цаца
+      EN: Wow, what a sight!
+      EN: Wow, what a thing!
+
+      This phrase can be used to express surprise at something attractive
+    """
+
+    [[chats.allowed]]
+    id = {user1_id}
+    who = "user1"
+    prompt = """
+    custom prompt for chat_id={user1_id}
+    this chat wants different prompt
+    """
+
+    [[chats.allowed]]
+    id = {user2_id}
+    who = "user2"
+    '''
+    toml_content = textwrap.dedent(toml_content)
+    toml_file = tmp_path / 'test_config_v4.toml'
+    toml_file.write_text(toml_content)
+    return toml_file
 
 
-def test_config_parsing_no_version_means_version_1(bot_me, tmp_path_no_version, user1_id, user2_id, default_prompt):
-    config = Config.read_yaml(tmp_path_no_version)
+def test_toml_config_parsing_default_config_parses_bot_me(
+    bot_me, tmp_path_toml_config_v4
+):
+    with warnings.catch_warnings():
+        config = Config.read_toml(tmp_path_toml_config_v4)
+
     assert config.me == bot_me
-    assert config.version == Config.VERSION_ONE
-
-    assert config.prompt_message_for_user(user1_id)['content'] == default_prompt
-    assert config.prompt_message_for_user(user2_id)['content'] == default_prompt
 
 
-def test_config_parsing_version_2(bot_me, tmp_path_explicit_version_2, user1_id, user2_id, default_prompt):
-    config = Config.read_yaml(tmp_path_explicit_version_2)
-    assert config.me == bot_me
-    assert config.version == Config.VERSION_TWO
+def test_config_can_override_prompt_for_user1_no_effect_on_user2(
+    bot_me,
+    tmp_path_toml_config_v4,
+    user1_id,
+    user2_id,
+    default_prompt,
+    new_nondefault_prompt,
+):
+    with warnings.catch_warnings():
+        config = Config.read_toml(tmp_path_toml_config_v4)
 
-    assert config.prompt_message_for_user(user1_id)['content'] != default_prompt
-    assert config.prompt_message_for_user(user2_id)['content'] == default_prompt
+    prompt_u2 = config[user2_id].prompt
+    assert prompt_u2 == default_prompt
 
-
-def test_config_can_override_prompt(bot_me, tmp_path_explicit_version_2, user1_id, user2_id, default_prompt, new_nondefault_prompt):
-    config = Config.read_yaml(tmp_path_explicit_version_2)
-    assert config.me == bot_me
-    assert config.version == Config.VERSION_TWO
-
-    assert config.prompt_message_for_user(user1_id)['content'] != default_prompt
+    prompt_u1 = config[user1_id].prompt
+    assert prompt_u1 != default_prompt
     config.override_prompt_for_chat(user1_id, new_nondefault_prompt)
-    assert config.prompt_message_for_user(user1_id)['content'] == new_nondefault_prompt
-    assert config.prompt_message_for_user(user2_id)['content'] == default_prompt
+
+    new_prompt_u1 = config[user1_id].prompt
+    assert new_prompt_u1 == new_nondefault_prompt
+
+    # changing prompt for one user cannot override prompt for another one
+    new_prompt2 = config[user2_id].prompt
+    assert prompt_u2 == new_prompt2
