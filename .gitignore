@@ -1,3 +1,13 @@
 **/__pycache__
 .envrc
 matvey.yml
+matvey.toml
+.python-version
+.vscode
+CLAUDE.md
+KANDINSKI.md
+YANDEXGPT.md
+ben.yml
+skrepka.yml
+zerg.toml
+zerg.yml
