@@ -16,15 +16,18 @@ from aiogram.filters import Command
 
 from config import Config
 from chat_completions import TextResponse, ImageResponse
+from message_store import MessageStore, StoredChatMessage
 
 
 API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 bot_props = DefaultBotProperties(parse_mode='HTML')
 bot = Bot(token=API_TOKEN, default=bot_props)
 router = Router()
+message_store = MessageStore.from_env()
 
 config = Config.read_toml(path=os.getenv('BOT_CONFIG_TOML'))
 
@@ -62,7 +65,7 @@ async def react(success, message):
 
 @router.message(Command(commands=['blerb'], ignore_mention=True))
 async def dump_message_info(message: types.Message):
-    logging.info(f'incoming blerb from {message.chat.id}')
+    logger.info(f'incoming blerb from {message.chat.id}')
     await message.reply(f'chat id: {html.code(message.chat.id)}')
 
 
@@ -203,20 +206,43 @@ async def translate_ruen(message: types.Message, command: types.CommandObject):
     await react(llm_reply.success, message)
 
 
+@router.message(config.filter_is_admin, Command(commands=['admin_stats']))
+async def handle_stats_command(message: types.Message, command: types.CommandObject):
+    stats = message_store.fetch_stats(keys_pattern='matvey-3000:history:*')
+    total_chats = len(config)
+    response = f'Total keys in storage: {len(stats)}'
+    per_chat = '\n'.join(f'{key}: {count}' for key, count in stats)
+    await message.reply(
+        '\n'.join(['[ADMIN]', response, '===', per_chat, f'Total chats: {total_chats}'])
+    )
+
+
 @router.message(F.text, config.filter_chat_allowed)
-async def send_llm_response(message: types.Message):
+async def handle_text_message(message: types.Message):
     # if last message is a single word, ignore it
     args = message.text
     args = args.split()
     if len(args) == 1:
         return
 
+    save_messages = config[message.chat.id].save_messages
+    if save_messages:
+        tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
+        # do I want to store timestamp as well?
+        msg = StoredChatMessage(
+            username=message.chat.username,
+            full_name=message.chat.full_name,
+            text=message.text,
+        )
+        message_store.save(tag, msg)
+
     message_chain = extract_message_chain(message, bot.id)
     # print(message_chain)
-    if not any(role == 'assistant' for role, _ in message_chain):
-        if len(message_chain) > 1 and random.random() < 0.95:
-            logging.info('podpizdnut mode fired')
-            return
+    # this seems... twisted so I disable it for now
+    #  if not any(role == 'assistant' for role, _ in message_chain):
+    #  if len(message_chain) > 1 and random.random() < 0.95:
+    #      logging.info('podpizdnut mode fired')
+    #      return
 
     if len(message_chain) == 1 and message.chat.id < 0:
         if not any(config.me in x for x in args):
@@ -244,6 +270,14 @@ async def send_llm_response(message: types.Message):
     )
     func = message.reply if llm_reply.success else message.answer
     await func(llm_reply.text)
+
+    if save_messages:
+        msg = StoredChatMessage(
+            username=config.me_strip_lower,
+            full_name='BOT',
+            text=llm_reply.text,
+        )
+        message_store.save(tag, msg)
 
     await react(llm_reply.success, message)
 
