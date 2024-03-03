@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import tomllib
 import pathlib
 from dataclasses import dataclass
@@ -12,6 +13,8 @@ class ChatConfig:
     provider: str
     allowed: bool
     who: str
+    is_admin: bool = False
+    save_messages: bool = False
 
 
 @dataclass
@@ -49,6 +52,8 @@ class Config:
                 provider=chat.get('provider', default_provider),
                 allowed=True,
                 who=chat['who'],
+                is_admin=chat.get('is_admin', False),
+                save_messages=chat.get('save_messages', False),
             )
             for chat in config['chats']['allowed']
         }
@@ -72,6 +77,13 @@ class Config:
     def __getitem__(self, chat_id) -> ChatConfig:
         return self.configs[chat_id]
 
+    def __len__(self) -> int:
+        return len(self.configs)
+
+    @functools.cached_property
+    def me_strip_lower(self):
+        return self.me.lstrip('@').lower()
+
     def model_for_provider(self, provider):
         # this should be per-chat setting???
         return {
@@ -82,6 +94,9 @@ class Config:
 
     async def filter_chat_allowed(self, message) -> bool:
         return message.chat.id in self.allowed_chat_id
+
+    async def filter_is_admin(self, message) -> bool:
+        return self[message.chat.id].is_admin
 
     def override_prompt_for_chat(self, chat_id, new_prompt) -> bool:
         self.configs[chat_id].prompt = new_prompt
@@ -100,6 +115,7 @@ class Config:
             f'\nconfig version {html.underline(self.version)}',
             f'model: {html.underline(model)}',
             f'provider: {html.underline(provider)}',
+            f'saving messages: {"YES" if config.save_messages else "NO"}',
         ]
         return '\n'.join(lines)
 

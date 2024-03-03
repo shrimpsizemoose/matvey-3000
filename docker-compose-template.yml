@@ -2,10 +2,16 @@ version: '3'
 
 services:
   matvey:
-    image: ghcr.io/shrimpsizemoose/matvey-3000:0.3.0
+    image: ghcr.io/shrimpsizemoose/matvey-3000:0.9.0
     environment:
       TELEGRAM_API_TOKEN: '667778888:AAHmHmHmHmHmHmAAAAAAAAAAAHmHmHmHmHm'
       OPENAI_API_KEY: 'sk-HS1777777777777777777777777777777777777777777771'
-      BOT_CONFIG_YAML: '/bot/matvey.yml'
+      BOT_CONFIG_TOML: '/bot/matvey.yml'
+      REDIS_URL: 'redis://redis:6379/0'
     volumes:
       - ./matvey.yml:/bot/matvey.yml
+
+  redis:
+    image: redis:5-alpine
+    ports:
+      - 6379:6379

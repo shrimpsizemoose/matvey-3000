@@ -65,7 +65,9 @@ You loooove to laugh.
 Start your responses always with a random emoji and a line break.
 Always insert random fact about something in the reply
 """
+is_admin = true
 
 [[chats.allowed]]
 id = -1001000000777
 who = "Very important chat group"
+save_messages = true
