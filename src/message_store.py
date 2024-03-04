@@ -20,6 +20,16 @@ class StoredChatMessage:
     def serialize(self):
         return json.dumps(asdict(self), ensure_ascii=False)
 
+    @classmethod
+    def deserialize(cls, serialized_dict: str | dict):
+        if isinstance(serialized_dict, (str, bytes)):
+            serialized_dict = json.loads(serialized_dict)
+        return cls(
+            username=serialized_dict['username'],
+            full_name=serialized_dict['full_name'],
+            text=serialized_dict['text'],
+        )
+
 
 class MessageStore:
     def __init__(self, redis_url: str):
@@ -42,3 +52,7 @@ class MessageStore:
             for key in keys
             if self.redis_conn.type(key) == b'list'  # noqa
         ]
+
+    def fetch_messages(self, key: str, limit: int) -> list[StoredChatMessage]:
+        messages = self.redis_conn.lrange(key, 0, limit)
+        return list(map(StoredChatMessage.deserialize, messages))

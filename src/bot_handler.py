@@ -8,6 +8,7 @@ import os
 import random
 
 import openai
+import tiktoken
 
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
@@ -215,6 +216,96 @@ async def handle_stats_command(message: types.Message, command: types.CommandObj
     await message.reply(
         '\n'.join(['[ADMIN]', response, '===', per_chat, f'Total chats: {total_chats}'])
     )
+
+
+@router.message(config.filter_summary_enabled, Command(commands=['summary']))
+async def handle_summary_command(message: types.Message, command: types.CommandObject):
+    tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
+    limit = command.args
+    limit = -1 if limit is None else int(command.args)
+    messages = message_store.fetch_messages(key=tag, limit=limit)
+    # encoding = tiktoken.get_encoding("cl100k_base")
+    encoding = tiktoken.encoding_for_model(config.model_for_chat_id(message.chat.id))
+    total = len(messages)
+    info_message = await message.answer(f'🤖 Обрабатываю {total} сообщений')
+    progress = await message.answer(f'Обрабатываю 0/{total} чанков')
+    # full_text = '\n'.join(m.text for m in messages)
+
+    max_chunk_size = 16385
+
+    def L(x):
+        return len(encoding.encode(x))
+
+    def chunk_it(texts):
+        chunks = []
+        current_chunk = ""
+
+        for tt in texts:
+            if L(current_chunk) + L(tt) < max_chunk_size:
+                current_chunk += tt + "\n"
+            else:
+                chunks.append(current_chunk.strip())
+                current_chunk = tt + "\n"
+        if current_chunk:
+            chunks.append(current_chunk.strip())
+        return chunks
+
+    # get summary for each chunk
+    async def get_summaries(chunks, entity='чанк'):
+        prompt = (
+            'system',
+            f"""
+You are a helpful assistant that makes the world's best summaries.
+Your task is to summarize the following text in no more than 20 sentences.
+This text is written by other people.
+IT IS IMPORTANT that you use the SAME language as the user input.""",
+        )
+        total_chunks = len(chunks)
+        summaries = []
+        for i, chunk in enumerate(chunks, start=1):
+            mm = [prompt, ('user', chunk)]
+            await progress.edit_text(f'Обрабатываю {entity} {i}/{total_chunks}')
+            await message.chat.do('typing')
+            llm_reply = await TextResponse.generate(
+                config=config,
+                chat_id=message.chat.id,
+                messages=mm,
+            )
+            summaries.append(llm_reply.text)
+            await asyncio.sleep(0.5)
+        return summaries
+
+    chunks = chunk_it(texts=(m.text for m in messages))
+    summaries = await get_summaries(chunks)
+
+    final_prompt = """
+You are a helpful assistant that creates the world's best summaries.
+Your task is to summarize the following text in no more than 20 sentences.
+This text is written by other people.
+End your message with three main bullet points of the summary.
+IT IS VERY IMPORTANT that you use the SAME language as user input, otherwise I would be very sad.
+"""
+    L_final_prompt = L(final_prompt)
+
+    final_summary = '\n'.join(summaries)
+    while L(final_summary) > (max_chunk_size - L_final_prompt):
+        final_summary = '\n'.join(summaries)
+        chunks = chunk_it(texts=summaries)
+        summaries = await get_summaries(chunks, entity='предсаммари')
+        final_summary = '\n'.join(summaries)
+
+    await progress.delete()
+
+    llm_reply = await TextResponse.generate(
+        config=config,
+        chat_id=message.chat.id,
+        messages=[('system', final_prompt), ('user', final_summary)],
+    )
+
+    await info_message.delete()
+
+    await message.reply(llm_reply.text)
+    await react(llm_reply.success, message)
 
 
 @router.message(F.text, config.filter_chat_allowed)

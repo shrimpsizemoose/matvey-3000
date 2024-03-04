@@ -19,7 +19,8 @@ RUN pip install \
         hiredis==2.3.2 \
         httpx==0.27.0 \
         openai==1.12.0 \
-        redis==5.0.2
+        redis==5.0.2 \
+        tiktoken==0.6.0
 
 CMD ["python", "/bot/bot_handler.py"]
 

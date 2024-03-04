@@ -15,6 +15,7 @@ class ChatConfig:
     who: str
     is_admin: bool = False
     save_messages: bool = False
+    summary_enabled: bool = False
 
 
 @dataclass
@@ -54,6 +55,7 @@ class Config:
                 who=chat['who'],
                 is_admin=chat.get('is_admin', False),
                 save_messages=chat.get('save_messages', False),
+                summary_enabled=chat.get('summary_enabled', False),
             )
             for chat in config['chats']['allowed']
         }
@@ -97,6 +99,9 @@ class Config:
 
     async def filter_is_admin(self, message) -> bool:
         return self[message.chat.id].is_admin
+
+    async def filter_summary_enabled(self, message) -> bool:
+        return self[message.chat.id].summary_enabled
 
     def override_prompt_for_chat(self, chat_id, new_prompt) -> bool:
         self.configs[chat_id].prompt = new_prompt
