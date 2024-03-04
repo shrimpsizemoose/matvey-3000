@@ -238,11 +238,12 @@ async def handle_text_message(message: types.Message):
 
     message_chain = extract_message_chain(message, bot.id)
     # print(message_chain)
-    # this seems... twisted so I disable it for now
-    #  if not any(role == 'assistant' for role, _ in message_chain):
-    #  if len(message_chain) > 1 and random.random() < 0.95:
-    #      logging.info('podpizdnut mode fired')
-    #      return
+    if not any(role == 'assistant' for role, _ in message_chain):
+        # this seems... twisted. Need to double-check
+        if len(message_chain) > 1 and random.random() < 0.95:
+            # vv wtf is this comment?
+            # logging.info('podpizdnut mode fired')
+            return
 
     if len(message_chain) == 1 and message.chat.id < 0:
         if not any(config.me in x for x in args):
