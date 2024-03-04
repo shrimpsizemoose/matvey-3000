@@ -110,7 +110,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     try:
         response = await ImageResponse.generate(prompt, mode='dall-e')
     except openai.BadRequestError:
-        messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
+        messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
         messages_to_send.append(
             (
                 'user',
@@ -140,7 +140,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
     try:
         response = await ImageResponse.generate(prompt, mode='kandinski')
     except openai.BadRequestError:
-        messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
+        messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
         messages_to_send.append(
             (
                 'user',
@@ -158,7 +158,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
     else:
         await message.chat.do('upload_photo')
         if response.censored:
-            messages_to_send = [config.prompt_tuple_for_chat_id(message.chat.id)]
+            messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
             messages_to_send.append(
                 (
                     'user',
