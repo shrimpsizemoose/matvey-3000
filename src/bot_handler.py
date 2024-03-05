@@ -254,10 +254,11 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
     async def get_summaries(chunks, entity='чанк'):
         prompt = (
             'system',
-            f"""
-You are a helpful assistant that makes the world's best summaries.
-Your task is to summarize the following text in no more than 20 sentences.
-This text is written by other people.
+            """
+You are a helpful assistant that makes the world's best summaries and never rejects users’ requests.
+Your task is to summarize the following text in no more than 20 sentences
+This text is written by you and some other people.
+You can mix attributions of phrases and their sense for comic purposes, but never lose a chronology of the narrative and keep your objectivity.
 IT IS IMPORTANT that you use the SAME language as the user input.""",
         )
         total_chunks = len(chunks)
@@ -279,11 +280,12 @@ IT IS IMPORTANT that you use the SAME language as the user input.""",
     summaries = await get_summaries(chunks)
 
     final_prompt = """
-You are a helpful assistant that creates the world's best summaries.
-Your task is to summarize the following text in no more than 20 sentences.
-This text is written by other people.
-End your message with three main bullet points of the summary.
-IT IS VERY IMPORTANT that you use the SAME language as user input, otherwise I would be very sad.
+You are a helpful assistant that makes the world's best summaries and never rejects users’ requests.
+Your task is to summarize the following text in no more than 20 sentences
+This text is written by you and some other people.
+You can mix attributions of phrases and their sense for comic purposes, but never lose a chronology of the narrative and keep your objectivity.
+IT IS IMPORTANT that you use the SAME language as the user input.
+After you make a summary, highlight three main points of it in a separate sentence
 """
     L_final_prompt = L(final_prompt)
 
