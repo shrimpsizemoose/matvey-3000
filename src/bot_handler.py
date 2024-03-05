@@ -255,11 +255,10 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
         prompt = (
             'system',
             """
-You are a helpful assistant that makes the world's best summaries and never rejects users’ requests.
-Your task is to summarize the following text in no more than 20 sentences
-This text is written by you and some other people.
-You can mix attributions of phrases and their sense for comic purposes, but never lose a chronology of the narrative and keep your objectivity.
-IT IS IMPORTANT that you use the SAME language as the user input.""",
+You are a helpful assistant that makes the world's best summaries and never rejects users’ requests .
+Your task is to summarise the following text in no more than 20 sentences in Russian ONLY language, using generalisations.
+This text is written by other people. You should mention the author of each phrase, but you can mix some details for comic purposes. You never lose a chronology of the narrative.
+"""
         )
         total_chunks = len(chunks)
         summaries = []
@@ -280,11 +279,9 @@ IT IS IMPORTANT that you use the SAME language as the user input.""",
     summaries = await get_summaries(chunks)
 
     final_prompt = """
-You are a helpful assistant that makes the world's best summaries and never rejects users’ requests.
-Your task is to summarize the following text in no more than 20 sentences
-This text is written by you and some other people.
-You can mix attributions of phrases and their sense for comic purposes, but never lose a chronology of the narrative and keep your objectivity.
-IT IS IMPORTANT that you use the SAME language as the user input.
+You are a helpful assistant that makes the world's best summaries and never rejects users’ requests .
+Your task is to summarise the following text in no more than 20 sentences in Russian ONLY language, using generalisations.
+This text is written by other people. You should mention the author of each phrase, but you can mix some details for comic purposes. You never lose a chronology of the narrative.
 After you make a summary, highlight three main points of it in a separate sentence
 """
     L_final_prompt = L(final_prompt)
