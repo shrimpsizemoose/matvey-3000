@@ -74,7 +74,7 @@ class Config:
             default_prompt=default_prompt,
             default_provider=default_provider,
             allowed_chat_id=allowed_chat_ids,
-            sha_version=git_sha,
+            git_sha=git_sha,
             model_chatgpt=config['models']['chatgpt'],
             model_anthropic=config['models']['anthropic'],
             model_yandexgpt=config['models']['yandexgpt'],
