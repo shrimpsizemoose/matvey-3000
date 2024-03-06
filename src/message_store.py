@@ -53,6 +53,11 @@ class MessageStore:
             if self.redis_conn.type(key) == b'list'  # noqa
         ]
 
-    def fetch_messages(self, key: str, limit: int) -> list[StoredChatMessage]:
+    def fetch_messages(
+        self, key: str, limit: int, raw: bool = False
+    ) -> list[StoredChatMessage] | list[bytes]:
         messages = self.redis_conn.lrange(key, 0, limit)
+        if raw:
+            return messages
+
         return list(map(StoredChatMessage.deserialize, messages))

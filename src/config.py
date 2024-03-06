@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import functools
-import tomllib
+import os
 import pathlib
+import tomllib
 from dataclasses import dataclass
 
 
@@ -26,9 +27,13 @@ class Config:
     default_prompt: str
     default_provider: str
     allowed_chat_id: list[int]
+
+    git_sha: str
+
     model_chatgpt: str
     model_anthropic: str
     model_yandexgpt: str
+
     en_to_ru_prompt: str
     ru_to_en_prompt: str
     positive_emojis: str
@@ -60,6 +65,8 @@ class Config:
             for chat in config['chats']['allowed']
         }
 
+        git_sha = os.getenv('GIT_SHA_ENV', 'Unknown')
+
         return cls(
             me=config['me'],
             version=config['version'],
@@ -67,6 +74,7 @@ class Config:
             default_prompt=default_prompt,
             default_provider=default_provider,
             allowed_chat_id=allowed_chat_ids,
+            sha_version=git_sha,
             model_chatgpt=config['models']['chatgpt'],
             model_anthropic=config['models']['anthropic'],
             model_yandexgpt=config['models']['yandexgpt'],
@@ -121,6 +129,7 @@ class Config:
             f'model: {html.underline(model)}',
             f'provider: {html.underline(provider)}',
             f'saving messages: {"YES" if config.save_messages else "NO"}',
+            f'git sha: {html.underline(self.git_sha)}',
         ]
         return '\n'.join(lines)
 

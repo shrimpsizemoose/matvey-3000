@@ -12,6 +12,9 @@ COPY src/message_store.py /bot/
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
+ARG GIT_SHA
+ENV GIT_SHA_ENV=$GIT_SHA
+
 # Install the required packages
 RUN pip install \
         aiogram==3.4.1 \

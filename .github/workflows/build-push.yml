@@ -37,6 +37,8 @@ jobs:
           tags:
             ghcr.io/shrimpsizemoose/matvey-3000:${{ steps.git_sha.outputs.sha }}
           push: true
+          build-args: |
+            GIT_SHA=${{ steps.git_sha.outputs.sha }}
 
       - name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
