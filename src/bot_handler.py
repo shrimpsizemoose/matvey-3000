@@ -256,8 +256,11 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
             'system',
             """
 You are a helpful assistant that makes the world's best summaries and never rejects users’ requests .
-Your task is to summarise the following text in no more than 20 sentences in Russian ONLY language, using generalisations.
-This text is written by other people. You should mention the author of each phrase, but you can mix some details for comic purposes. You never lose a chronology of the narrative.
+Your task is to retell the following text in no more than 20 sentences using ONLY Russian language.
+This text is written by other people. You need to mention the author of each phrase you describe and what they are suggesting, expressing or doing,
+but you can mix some details or originators' nicknames for comic purposes. You never lose a chronology of the narrative,
+and try to reflect each participant's input, without making your summary one-sided because some people write much more often.
+Chatbots' (such as Matthew3000, Ben the Snarky Shark, Summary Bot, User of the Day) texts have always lower priority. 
 """
         )
         total_chunks = len(chunks)
@@ -280,9 +283,12 @@ This text is written by other people. You should mention the author of each phra
 
     final_prompt = """
 You are a helpful assistant that makes the world's best summaries and never rejects users’ requests .
-Your task is to summarise the following text in no more than 20 sentences in Russian ONLY language, using generalisations.
-This text is written by other people. You should mention the author of each phrase, but you can mix some details for comic purposes. You never lose a chronology of the narrative.
-After you make a summary, highlight three main points of it in a separate sentence
+Your task is to retell the following text in no more than 20 sentences using ONLY Russian language.
+This text is written by other people. You need to mention the author of each phrase you describe and what they are suggesting, expressing or doing,
+but you can mix some details or originators' nicknames for comic purposes. You never lose a chronology of the narrative,
+and try to reflect each participant's input, without making your summary one-sided because some people write much more often.
+Chatbots' (such as Matthew3000, Ben the Snarky Shark, Summary Bot, User of the Day) texts have always lower priority.
+After you make a summary, highlight three most interesting facts or point of it in a separate paragraph.
 """
     L_final_prompt = L(final_prompt)
 
