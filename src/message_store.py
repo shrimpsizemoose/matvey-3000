@@ -13,8 +13,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StoredChatMessage:
-    username: str
-    full_name: str
+    chat_name: str
+    from_username: str
+    from_full_name: str
+    timestamp: int
     text: str
 
     def serialize(self):
@@ -24,10 +26,20 @@ class StoredChatMessage:
     def deserialize(cls, serialized_dict: str | dict):
         if isinstance(serialized_dict, (str, bytes)):
             serialized_dict = json.loads(serialized_dict)
+        obj = cls(**serialized_dict)
+        obj.timestamp = int(obj.timestamp)
+        return obj
+
+    @classmethod
+    def from_tg_message(cls, message):
+        from_user = message.from_user
+
         return cls(
-            username=serialized_dict['username'],
-            full_name=serialized_dict['full_name'],
-            text=serialized_dict['text'],
+            chat_name=message.chat.full_name,
+            from_username=from_user.username,
+            from_full_name=from_user.full_name,
+            timestamp=int(message.date.timestamp()),
+            text=message.text,
         )
 
 

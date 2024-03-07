@@ -6,6 +6,7 @@ import collections
 import logging
 import os
 import random
+import time
 
 import openai
 import tiktoken
@@ -317,22 +318,17 @@ After you make a summary, highlight three most interesting facts or point of it 
 
 @router.message(F.text, config.filter_chat_allowed)
 async def handle_text_message(message: types.Message):
+    save_messages = config[message.chat.id].save_messages
+    if save_messages:
+        tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
+        msg = StoredChatMessage.from_tg_message(message)
+        message_store.save(tag, msg)
+
     # if last message is a single word, ignore it
     args = message.text
     args = args.split()
     if len(args) == 1:
         return
-
-    save_messages = config[message.chat.id].save_messages
-    if save_messages:
-        tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
-        # do I want to store timestamp as well?
-        msg = StoredChatMessage(
-            username=message.chat.username,
-            full_name=message.chat.full_name,
-            text=message.text,
-        )
-        message_store.save(tag, msg)
 
     message_chain = extract_message_chain(message, bot.id)
     # print(message_chain)
@@ -372,9 +368,11 @@ async def handle_text_message(message: types.Message):
 
     if save_messages:
         msg = StoredChatMessage(
-            username=config.me_strip_lower,
-            full_name='BOT',
+            chat_name=message.chat.full_name,
+            from_username=config.me_strip_lower,
+            from_full_name='BOT',
             text=llm_reply.text,
+            timestamp=int(time.time()),
         )
         message_store.save(tag, msg)
 
