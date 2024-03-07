@@ -43,7 +43,8 @@ class MessageStore:
 
     def save(self, tag: str, message: StoredChatMessage):
         # might need to have a deeper per-hour or per-day split
-        self.redis_conn.rpush(tag, message.serialize())
+        # alternatively, just trim it to like 5000?
+        self.redis_conn.lpush(tag, message.serialize())
 
     def fetch_stats(self, keys_pattern: str) -> list[tuple[str, int]]:
         keys = self.redis_conn.keys(keys_pattern)

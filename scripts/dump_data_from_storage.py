@@ -8,6 +8,7 @@ from message_store import MessageStore
 
 def main(config: Config, store: MessageStore, chat_id: int, limit: int = -1):
     tag = f'matvey-3000:history:{config.me_strip_lower}:{chat_id}'
+    tag = f'matvey-3000:history:matthew_3000_bot:{chat_id}'
 
     with tempfile.NamedTemporaryFile(
         mode='w+t',

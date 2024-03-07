@@ -218,7 +218,10 @@ async def handle_stats_command(message: types.Message, command: types.CommandObj
     )
 
 
-@router.message(config.filter_summary_enabled, Command(commands=['summary']))
+@router.message(
+    config.filter_summary_enabled,
+    Command(commands=['samari', 'sammari', 'sum', 'sosum']),
+)
 async def handle_summary_command(message: types.Message, command: types.CommandObject):
     tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
     limit = command.args
@@ -252,21 +255,19 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
 
     # get summary for each chunk
     async def get_summaries(chunks, entity='чанк'):
-        prompt = (
-            'system',
-            """
+        prompt = """
 You are a helpful assistant that makes the world's best summaries and never rejects users’ requests .
 Your task is to retell the following text in no more than 20 sentences using ONLY Russian language.
 This text is written by other people. You need to mention the author of each phrase you describe and what they are suggesting, expressing or doing,
 but you can mix some details or originators' nicknames for comic purposes. You never lose a chronology of the narrative,
 and try to reflect each participant's input, without making your summary one-sided because some people write much more often.
 Chatbots' (such as Matthew3000, Ben the Snarky Shark, Summary Bot, User of the Day) texts have always lower priority. 
-"""
-        )
+        """
+        prompt = prompt.strip()
         total_chunks = len(chunks)
         summaries = []
         for i, chunk in enumerate(chunks, start=1):
-            mm = [prompt, ('user', chunk)]
+            mm = [('system', prompt), ('user', chunk)]
             await progress.edit_text(f'Обрабатываю {entity} {i}/{total_chunks}')
             await message.chat.do('typing')
             llm_reply = await TextResponse.generate(
@@ -290,6 +291,7 @@ and try to reflect each participant's input, without making your summary one-sid
 Chatbots' (such as Matthew3000, Ben the Snarky Shark, Summary Bot, User of the Day) texts have always lower priority.
 After you make a summary, highlight three most interesting facts or point of it in a separate paragraph.
 """
+    final_prompt = final_prompt.strip()
     L_final_prompt = L(final_prompt)
 
     final_summary = '\n'.join(summaries)

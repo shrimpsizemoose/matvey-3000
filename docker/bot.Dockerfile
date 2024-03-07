@@ -8,6 +8,7 @@ COPY src/bot_handler.py  /bot/
 COPY src/config.py /bot/
 COPY src/chat_completions.py /bot/
 COPY src/message_store.py /bot/
+COPY scripts/dump_data_from_storage.py /bot/
 
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
