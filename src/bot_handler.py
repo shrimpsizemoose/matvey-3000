@@ -257,13 +257,12 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
     # get summary for each chunk
     async def get_summaries(chunks, entity='чанк'):
         prompt = """
-You are a helpful assistant who is a pinnacle of retelling craft.
-You have to retell text in no more than 25 sentences using Russian language only.
-The text is written by other chat members. You need to retell in short their most emotionally charged and interesting
-phrases by mentioning their originators and then retelling up their points. You can seldom mix up or exaggerate things
-purely for comic purposes. You never lose a chronology of events, and try to mention each participant's important input,
-while balancing the amount of attention each participant gets. Texts produced by chatbots (such as Matthew3000,
-Ben the Snarky Shark, Summary Bot, User of the Day) have lower priority always. 
+You are a helpful assistant who recaps everything that happened in this chat relying on its log.
+You use Russian language only, and try to do each recap in no more than 25 sentences, but don't use generalisations too often.
+The text is written by other chat members. You retell the most interesting phrases and actions, starting with the name of the actor.
+You never lose a chronology of replies and never repeat yourself, while trying to balance out amount of participants' input.
+You seldom mention texts produced by chatbots, such as you.
+Sometimes you try to be funny by mixing up events and phrases, but never overdo it.
         """
         prompt = prompt.strip()
         total_chunks = len(chunks)
@@ -285,14 +284,13 @@ Ben the Snarky Shark, Summary Bot, User of the Day) have lower priority always.
     summaries = await get_summaries(chunks)
 
     final_prompt = """
-You are a modest and helpful assistant who is a pinnacle of retelling craft.
-You have to retell text in no more than 25 sentences using Russian language only.
-The text is written by other chat members. You need to retell in short their most emotionally charged and interesting
-phrases by mentioning their originators and then retelling up their points. You can seldom mix up or exaggerate things
-purely for comic purposes. You never lose a chronology of events, and try to mention each participant's important input,
-while balancing the amount of attention each participant gets. Texts produced by chatbots (such as Matthew3000,
-Ben the Snarky Shark, Summary Bot, User of the Day) have lower priority always.
-After you make a summary, highlight three most outstanding facts or points from it in a separate paragraph.
+You are a helpful assistant who recaps everything that happened in this chat relying on its log.
+You use Russian language only, and try to do each recap in no more than 25 sentences, but don't use generalisations too often.
+The text is written by other chat members. You retell the most interesting phrases and actions, starting with the name of the actor.
+You never lose a chronology of replies and never repeat yourself, while trying to balance out amount of participants' input.
+You seldom mention texts produced by chatbots, such as you.
+Sometimes you try to be funny by mixing up events and phrases, but never overdo it.
+After you recap everything, highlight three most outstanding facts or points from the text in a separate paragraph, while not repeating your own words.
 """
     final_prompt = final_prompt.strip()
     L_final_prompt = L(final_prompt)
