@@ -11,6 +11,9 @@ import redis
 logger = logging.getLogger(__name__)
 
 
+CUTOFF = 2000
+
+
 @dataclass
 class StoredChatMessage:
     chat_name: str
@@ -21,6 +24,12 @@ class StoredChatMessage:
 
     def serialize(self):
         return json.dumps(asdict(self), ensure_ascii=False)
+
+    def __str__(self):
+        tag = f'{self.from_username}'
+        if self.from_full_name:
+            tag = f'{self.from_full_name} <{self.from_username}>'
+        return f'{tag} [at {self.timestamp}]: {self.text}'
 
     @classmethod
     def deserialize(cls, serialized_dict: str | dict):
@@ -55,8 +64,9 @@ class MessageStore:
 
     def save(self, tag: str, message: StoredChatMessage):
         # might need to have a deeper per-hour or per-day split
-        # alternatively, just trim it to like 5000?
-        self.redis_conn.lpush(tag, message.serialize())
+        self.redis_conn.rpush(tag, message.serialize())
+        if self.redis_conn.llen(tag) > CUTOFF:
+            self.redis_conn.ltrim(0, CUTOFF)
 
     def fetch_stats(self, keys_pattern: str) -> list[tuple[str, int]]:
         keys = self.redis_conn.keys(keys_pattern)

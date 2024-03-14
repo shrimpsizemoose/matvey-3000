@@ -237,10 +237,10 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
 
     max_chunk_size = 16385
 
-    def L(x):
+    def L(x: str) -> int:
         return len(encoding.encode(x))
 
-    def chunk_it(texts):
+    def chunk_it(texts: list[str]) -> list[str]:
         chunks = []
         current_chunk = ""
 
@@ -281,7 +281,7 @@ Ben the Snarky Shark, Summary Bot, User of the Day) have lower priority always.
             await asyncio.sleep(0.5)
         return summaries
 
-    chunks = chunk_it(texts=(m.text for m in messages))
+    chunks = chunk_it(texts=map(str, messages))
     summaries = await get_summaries(chunks)
 
     final_prompt = """
