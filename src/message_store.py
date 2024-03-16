@@ -21,6 +21,7 @@ class StoredChatMessage:
     from_full_name: str
     timestamp: int
     text: str
+    #    raw: str
 
     def serialize(self):
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -49,6 +50,7 @@ class StoredChatMessage:
             from_full_name=from_user.full_name,
             timestamp=int(message.date.timestamp()),
             text=message.text,
+            # raw=message.model_dump_json(),
         )
 
 
@@ -79,7 +81,7 @@ class MessageStore:
     def fetch_messages(
         self, key: str, limit: int, raw: bool = False
     ) -> list[StoredChatMessage] | list[bytes]:
-        messages = self.redis_conn.lrange(key, 0, limit)
+        messages = self.redis_conn.lrange(key, -limit, -1)
         if raw:
             return messages
 
