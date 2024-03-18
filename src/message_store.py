@@ -68,7 +68,7 @@ class MessageStore:
         # might need to have a deeper per-hour or per-day split
         self.redis_conn.rpush(tag, message.serialize())
         if self.redis_conn.llen(tag) > CUTOFF:
-            self.redis_conn.ltrim(0, CUTOFF)
+            self.redis_conn.ltrim(tag, 0, CUTOFF)
 
     def fetch_stats(self, keys_pattern: str) -> list[tuple[str, int]]:
         keys = self.redis_conn.keys(keys_pattern)
