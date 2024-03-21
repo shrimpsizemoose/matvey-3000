@@ -65,25 +65,37 @@ async def react(success, message):
     await message.react(reaction=[react])
 
 
-@router.message(Command(commands=['blerb'], ignore_mention=True))
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['blerb'], ignore_mention=True),
+)
 async def dump_message_info(message: types.Message):
     logger.info(f'incoming blerb from {message.chat.id}')
     await message.reply(f'chat id: {html.code(message.chat.id)}')
 
 
-@router.message(Command(commands=['mode_claude'], ignore_mention=True))
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['mode_claude'], ignore_mention=True),
+)
 async def switch_to_claude(message: types.Message):
     config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_ANTHROPIC)
     await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_ANTHROPIC}!')
 
 
-@router.message(Command(commands=['mode_chatgpt'], ignore_mention=True))
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['mode_chatgpt'], ignore_mention=True),
+)
 async def switch_to_chatgpt(message: types.Message):
     config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_OPENAI)
     await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_OPENAI}!')
 
 
-@router.message(Command(commands=['mode_yandex'], ignore_mention=True))
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['mode_yandex'], ignore_mention=True),
+)
 async def switch_to_yandexgpt(message: types.Message):
     config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_YANDEXGPT)
     await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_YANDEXGPT}!')
@@ -105,7 +117,11 @@ async def dump_set_prompt(message: types.Message, command: types.CommandObject):
         await message.answer('nope 🙅')
 
 
-@router.message(config.filter_chat_allowed, Command(commands=['pic']))
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    config.filter_chat_allowed,
+    Command(commands=['pic']),
+)
 async def gimme_pic(message: types.Message, command: types.CommandObject):
     prompt = command.args
     await message.chat.do('upload_photo')
@@ -135,8 +151,15 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         await react(success=True, message=message)
 
 
-@router.message(config.filter_chat_allowed, Command(commands=['pik']))
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['pik']),
+)
 async def gimme_pikk(message: types.Message, command: types.CommandObject):
+    if command.command in config[message.chat.id].disabled_commands:
+        react(False, message)
+        return
     prompt = command.args
     await message.chat.do('upload_photo')
     try:
@@ -193,8 +216,15 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
             await react(success=True, message=message)
 
 
-@router.message(config.filter_chat_allowed, Command(commands=['ru', 'en']))
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['ru', 'en']),
+)
 async def translate_ruen(message: types.Message, command: types.CommandObject):
+    if command.command in config[message.chat.id].disabled_commands:
+        react(False, message)
+        return
     prompt_tuple = config.fetch_translation_prompt_tuple(command.command)
     messages_to_send = [prompt_tuple, ('user', command.args)]
     await message.chat.do('typing')
@@ -232,7 +262,6 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
     encoding = tiktoken.encoding_for_model(config.model_for_chat_id(message.chat.id))
     total = len(messages)
     info_message = await message.answer(f'🤖 Обрабатываю {total} сообщений')
-    progress = await message.answer(f'Обрабатываю 0/{total} чанков')
     # full_text = '\n'.join(m.text for m in messages)
 
     max_chunk_size = 16385
@@ -253,6 +282,9 @@ async def handle_summary_command(message: types.Message, command: types.CommandO
         if current_chunk:
             chunks.append(current_chunk.strip())
         return chunks
+
+    chunks = chunk_it(texts=map(str, messages))
+    progress = await message.answer(f'Обрабатываю 0/{len(chunks)} чанков')
 
     # get summary for each chunk
     async def get_summaries(chunks, entity='чанк'):
@@ -280,7 +312,6 @@ Sometimes you try to be funny by mixing up events and phrases, but never overdo 
             await asyncio.sleep(0.5)
         return summaries
 
-    chunks = chunk_it(texts=map(str, messages))
     summaries = await get_summaries(chunks)
 
     final_prompt = """

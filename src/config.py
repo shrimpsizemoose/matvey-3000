@@ -6,6 +6,8 @@ import pathlib
 import tomllib
 from dataclasses import dataclass
 
+from aiogram import types
+
 
 @dataclass
 class ChatConfig:
@@ -17,6 +19,7 @@ class ChatConfig:
     is_admin: bool = False
     save_messages: bool = False
     summary_enabled: bool = False
+    disabled_commands: list[str] | None = None
 
 
 @dataclass
@@ -61,6 +64,7 @@ class Config:
                 is_admin=chat.get('is_admin', False),
                 save_messages=chat.get('save_messages', False),
                 summary_enabled=chat.get('summary_enabled', False),
+                disabled_commands=chat.get('disabled_commands', []),
             )
             for chat in config['chats']['allowed']
         }
@@ -104,6 +108,21 @@ class Config:
 
     async def filter_chat_allowed(self, message) -> bool:
         return message.chat.id in self.allowed_chat_id
+
+    async def filter_command_not_disabled_for_chat(self, message) -> bool:
+        if not self[message.chat.id].disabled_commands:
+            return True
+        ee = message.entities or []
+        commands = [e.extract_from(message.text) for e in ee if e.type == 'bot_command']
+        if not commands:
+            return True
+        if commands[0] in self[message.chat.id].disabled_commands:
+            react = types.reaction_type_emoji.ReactionTypeEmoji(
+                type='emoji', emoji='🙊'
+            )
+            await message.react(reaction=[react])
+            return False
+        return True
 
     async def filter_is_admin(self, message) -> bool:
         return self[message.chat.id].is_admin
