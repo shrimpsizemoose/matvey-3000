@@ -21,6 +21,19 @@ class ChatConfig:
     summary_enabled: bool = False
     disabled_commands: list[str] | None = None
 
+    @classmethod
+    def just_no(cls, chat_id, provider, disabled_commands):
+        return cls(
+            chat_id=chat_id,
+            prompt="you are silent mute and don't talk to anyone at all",
+            provider=provider,
+            allowed=False,
+            is_admin=False,
+            save_messages=False,
+            summary_enabled=False,
+            disable_commands=disabled_commands,
+        )
+
 
 @dataclass
 class Config:
@@ -45,6 +58,23 @@ class Config:
     PROVIDER_OPENAI = 'openai'
     PROVIDER_ANTHROPIC = 'anthropic'
     PROVIDER_YANDEXGPT = 'yandexgpt'
+
+    ALL_COMMANDS = [
+        '/pic',
+        '/pik',
+        '/blerb',
+        '/pik',
+        '/mode_claude',
+        '/mode_chatgpt',
+        '/mode_yandex',
+        '/ru',
+        '/en',
+        '/prompt',
+        '/sammari',
+        '/sum',
+        '/samari',
+        '/sosum',
+    ]
 
     @classmethod
     def read_toml(cls, path) -> Config:
@@ -89,7 +119,14 @@ class Config:
         )
 
     def __getitem__(self, chat_id) -> ChatConfig:
-        return self.configs[chat_id]
+        config = self.configs.get(chat_id)
+        if config is None:
+            return ChatConfig.just_no(
+                chat_id=chat_id,
+                provider=self.default_provider,
+                disabled_commands=self.ALL_COMMANDS,
+            )
+        return config
 
     def __len__(self) -> int:
         return len(self.configs)
@@ -110,6 +147,8 @@ class Config:
         return message.chat.id in self.allowed_chat_id
 
     async def filter_command_not_disabled_for_chat(self, message) -> bool:
+        if message.chat.id not in self:
+            return False
         if not self[message.chat.id].disabled_commands:
             return True
         ee = message.entities or []
