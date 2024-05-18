@@ -18,13 +18,13 @@ ENV GIT_SHA_ENV=$GIT_SHA
 
 # Install the required packages
 RUN pip install \
-        aiogram==3.4.1 \
+        aiogram==3.6.0 \
         anthropic==0.16.0 \
         hiredis==2.3.2 \
         httpx==0.27.0 \
-        openai==1.12.0 \
-        redis==5.0.2 \
-        tiktoken==0.6.0
+        openai==1.30.0 \
+        redis==5.0.4 \
+        tiktoken==0.7.0
 
 CMD ["python", "/bot/bot_handler.py"]
 
