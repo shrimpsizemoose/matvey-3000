@@ -31,7 +31,8 @@ class ChatConfig:
             is_admin=False,
             save_messages=False,
             summary_enabled=False,
-            disable_commands=disabled_commands,
+            disabled_commands=disabled_commands,
+            who="i don't know who",
         )
 
 
@@ -124,7 +125,7 @@ class Config:
             return ChatConfig.just_no(
                 chat_id=chat_id,
                 provider=self.default_provider,
-                disabled_commands=self.ALL_COMMANDS,
+                disabled_commands=[],  # self.ALL_COMMANDS,
             )
         return config
 
