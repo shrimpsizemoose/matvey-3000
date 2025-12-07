@@ -1,6 +1,11 @@
 import pytest
+import sys
+from pathlib import Path
 import textwrap
 import warnings
+
+# Add src directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from config import Config
 

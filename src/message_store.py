@@ -6,6 +6,7 @@ import os
 from dataclasses import asdict, dataclass
 
 import redis
+import tiktoken
 
 
 logger = logging.getLogger(__name__)
@@ -86,3 +87,108 @@ class MessageStore:
             return messages
 
         return list(map(StoredChatMessage.deserialize, messages))
+
+    def fetch_conversation_history(
+        self, key: str, limit: int, bot_username: str
+    ) -> list[tuple[str, str]]:
+        """
+        Fetch recent conversation history and convert to (role, text) tuples.
+        
+        Args:
+            key: Redis key for the chat history
+            limit: Maximum number of messages to fetch
+            bot_username: Bot's username to identify assistant messages
+            
+        Returns:
+            List of (role, text) tuples where role is 'user' or 'assistant'
+        """
+        messages = self.fetch_messages(key=key, limit=limit, raw=False)
+        conversation = []
+        
+        for msg in messages:
+            # Determine role based on username
+            role = 'assistant' if msg.from_username == bot_username else 'user'
+            conversation.append((role, msg.text))
+        
+        return conversation
+
+    def clear_conversation_history(self, key: str) -> int:
+        """
+        Clear all conversation history for a given chat.
+        
+        Args:
+            key: Redis key for the chat history
+            
+        Returns:
+            Number of messages deleted
+        """
+        count = self.redis_conn.llen(key)
+        self.redis_conn.delete(key)
+        return count
+
+    def build_context_messages(
+        self,
+        key: str,
+        limit: int,
+        bot_username: str,
+        system_prompt: tuple[str, str],
+        max_tokens: int = 4000,
+        encoding_name: str = "cl100k_base",
+    ) -> list[tuple[str, str]]:
+        """
+        Build complete context for LLM including system prompt and recent history.
+        Ensures token limit is not exceeded.
+        
+        Args:
+            key: Redis key for the chat history
+            limit: Maximum number of messages to fetch
+            bot_username: Bot's username to identify assistant messages
+            system_prompt: System prompt tuple (role, text)
+            max_tokens: Maximum tokens allowed in context (default 4000)
+            encoding_name: Tiktoken encoding name (default cl100k_base for GPT-3.5/4)
+            
+        Returns:
+            List of (role, text) tuples ready for LLM
+        """
+        # Start with system prompt
+        context = [system_prompt]
+        
+        # Fetch conversation history
+        history = self.fetch_conversation_history(key, limit, bot_username)
+        
+        if not history:
+            return context
+        
+        # Filter out messages with None or empty text
+        history = [(role, text) for role, text in history if text]
+        
+        if not history:
+            return context
+        
+        # Try to get appropriate encoding
+        try:
+            encoding = tiktoken.get_encoding(encoding_name)
+            def count_tokens(text: str) -> int:
+                return len(encoding.encode(text))
+        except (KeyError, ValueError, LookupError):
+            # If encoding fails, use character count approximation
+            # For Russian/Cyrillic text, use more conservative ratio
+            def count_tokens(text: str) -> int:
+                # Roughly 3 chars per token for mixed Latin/Cyrillic
+                return max(len(text) // 3, 1)
+        
+        # Count system prompt tokens
+        system_tokens = count_tokens(system_prompt[1])
+        total_tokens = system_tokens
+        
+        # Add history messages from most recent backwards, respecting token limit
+        included_history = []
+        for role, text in reversed(history):
+            msg_tokens = count_tokens(text)
+            if total_tokens + msg_tokens > max_tokens:
+                break
+            included_history.insert(0, (role, text))
+            total_tokens += msg_tokens
+        
+        context.extend(included_history)
+        return context
