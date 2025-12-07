@@ -118,6 +118,23 @@ async def dump_set_prompt(message: types.Message, command: types.CommandObject):
 
 
 @router.message(
+    config.filter_chat_allowed,
+    Command(commands=['new_chat']),
+)
+async def handle_new_chat(message: types.Message):
+    """Clear conversation history and start fresh."""
+    tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
+    deleted_count = message_store.clear_conversation_history(tag)
+    
+    await message.reply(
+        f'🔄 Conversation history cleared! ({deleted_count} messages removed)\n'
+        f'Starting fresh conversation.'
+    )
+    await react(success=True, message=message)
+
+
+
+@router.message(
     config.filter_command_not_disabled_for_chat,
     config.filter_chat_allowed,
     Command(commands=['pic']),
@@ -349,9 +366,13 @@ After you recap everything, highlight three most outstanding facts or points fro
 
 @router.message(F.text, config.filter_chat_allowed)
 async def handle_text_message(message: types.Message):
-    save_messages = config[message.chat.id].save_messages
+    chat_config = config[message.chat.id]
+    save_messages = chat_config.save_messages
+    context_enabled = chat_config.context_enabled
+    
+    tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
+    
     if save_messages:
-        tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
         msg = StoredChatMessage.from_tg_message(message)
         message_store.save(tag, msg)
 
@@ -361,31 +382,52 @@ async def handle_text_message(message: types.Message):
     if len(args) == 1:
         return
 
+    # Determine if we should respond
+    should_respond = False
+    
+    # Check if this is a reply thread (backward compatibility)
     message_chain = extract_message_chain(message, bot.id)
-    # print(message_chain)
-    if not any(role == 'assistant' for role, _ in message_chain):
-        # this seems... twisted. Need to double-check
-        if len(message_chain) > 1 and random.random() < 0.95:
-            # vv wtf is this comment?
-            # logging.info('podpizdnut mode fired')
-            return
-
-    if len(message_chain) == 1 and message.chat.id < 0:
-        if not any(config.me in x for x in args):
-            # nobody mentioned me, so I shut up
-            return
+    has_bot_in_thread = any(role == 'assistant' for role, _ in message_chain)
+    
+    if has_bot_in_thread:
+        # Bot is part of the thread, respond
+        should_respond = True
+    elif len(message_chain) > 1 and random.random() < 0.95:
+        # Thread without bot, mostly ignore
+        return
+    elif message.chat.id < 0:
+        # Group chat - only respond if mentioned
+        if any(config.me in x for x in args):
+            should_respond = True
     else:
-        # we are either in private messages,
-        # or there's a continuation of a thread
-        pass
+        # Private chat - always respond
+        should_respond = True
+    
+    if not should_respond:
+        return
 
-    messages_to_send = [
-        config.prompt_tuple_for_chat(message.chat.id),
-        *message_chain,
-    ]
-
-    # print('chain of', len(message_chain))
-    # print('in chat', message.chat.id)
+    # Build context for LLM
+    system_prompt = config.prompt_tuple_for_chat(message.chat.id)
+    
+    if context_enabled and save_messages:
+        # Use Redis-based conversation history
+        max_context = chat_config.max_context_messages
+        messages_to_send = message_store.build_context_messages(
+            key=tag,
+            limit=max_context,
+            bot_username=config.me_strip_lower,
+            system_prompt=system_prompt,
+            max_tokens=4000,
+        )
+        # Add current message if not already in context
+        if not messages_to_send or messages_to_send[-1][1] != message.text:
+            messages_to_send.append(('user', message.text))
+    else:
+        # Fallback to thread-based context
+        messages_to_send = [
+            system_prompt,
+            *message_chain,
+        ]
 
     await message.chat.do('typing')
 

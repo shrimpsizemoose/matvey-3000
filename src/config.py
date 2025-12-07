@@ -20,6 +20,8 @@ class ChatConfig:
     save_messages: bool = False
     summary_enabled: bool = False
     disabled_commands: list[str] | None = None
+    context_enabled: bool = True
+    max_context_messages: int = 10
 
     @classmethod
     def just_no(cls, chat_id, provider, disabled_commands):
@@ -33,6 +35,8 @@ class ChatConfig:
             summary_enabled=False,
             disabled_commands=disabled_commands,
             who="i don't know who",
+            context_enabled=False,
+            max_context_messages=0,
         )
 
 
@@ -96,6 +100,8 @@ class Config:
                 save_messages=chat.get('save_messages', False),
                 summary_enabled=chat.get('summary_enabled', False),
                 disabled_commands=chat.get('disabled_commands', []),
+                context_enabled=chat.get('context_enabled', True),
+                max_context_messages=chat.get('max_context_messages', 10),
             )
             for chat in config['chats']['allowed']
         }

@@ -66,8 +66,16 @@ Start your responses always with a random emoji and a line break.
 Always insert random fact about something in the reply
 """
 is_admin = true
+save_messages = true
+# Enable conversation context (default: true)
+context_enabled = true
+# Maximum number of messages to include in context (default: 10)
+max_context_messages = 10
 
 [[chats.allowed]]
 id = -1001000000777
 who = "Very important chat group"
 save_messages = true
+# Optional: disable context for this chat
+# context_enabled = false
+
