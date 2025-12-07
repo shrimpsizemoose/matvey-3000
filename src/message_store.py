@@ -192,5 +192,3 @@ class MessageStore:
         
         context.extend(included_history)
         return context
-
-

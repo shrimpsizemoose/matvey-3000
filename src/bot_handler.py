@@ -372,10 +372,6 @@ async def handle_text_message(message: types.Message):
     
     # Define tag for potential use in context building and message saving
     tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
-    
-    if save_messages:
-        msg = StoredChatMessage.from_tg_message(message)
-        message_store.save(tag, msg)
 
     # if last message is a single word, ignore it
     args = message.text
@@ -420,7 +416,7 @@ async def handle_text_message(message: types.Message):
             system_prompt=system_prompt,
             max_tokens=4000,
         )
-        # Always add current message (it was just saved to Redis)
+        # Add current message (not yet in Redis)
         messages_to_send.append(('user', message.text))
     else:
         # Fallback to thread-based context
@@ -440,14 +436,19 @@ async def handle_text_message(message: types.Message):
     await func(llm_reply.text)
 
     if save_messages:
-        msg = StoredChatMessage(
+        # Save user message first
+        user_msg = StoredChatMessage.from_tg_message(message)
+        message_store.save(tag, user_msg)
+        
+        # Then save bot response
+        bot_msg = StoredChatMessage(
             chat_name=message.chat.full_name,
             from_username=config.me_strip_lower,
             from_full_name='BOT',
             text=llm_reply.text,
             timestamp=int(time.time()),
         )
-        message_store.save(tag, msg)
+        message_store.save(tag, bot_msg)
 
     await react(llm_reply.success, message)
 
