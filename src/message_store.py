@@ -6,6 +6,7 @@ import os
 from dataclasses import asdict, dataclass
 
 import redis
+import tiktoken
 
 
 logger = logging.getLogger(__name__)
@@ -132,6 +133,7 @@ class MessageStore:
         bot_username: str,
         system_prompt: tuple[str, str],
         max_tokens: int = 4000,
+        encoding_name: str = "cl100k_base",
     ) -> list[tuple[str, str]]:
         """
         Build complete context for LLM including system prompt and recent history.
@@ -143,12 +145,11 @@ class MessageStore:
             bot_username: Bot's username to identify assistant messages
             system_prompt: System prompt tuple (role, text)
             max_tokens: Maximum tokens allowed in context (default 4000)
+            encoding_name: Tiktoken encoding name (default cl100k_base for GPT-3.5/4)
             
         Returns:
             List of (role, text) tuples ready for LLM
         """
-        import tiktoken
-        
         # Start with system prompt
         context = [system_prompt]
         
@@ -158,17 +159,23 @@ class MessageStore:
         if not history:
             return context
         
-        # Try to estimate tokens (using cl100k_base as default encoding)
+        # Filter out messages with None or empty text
+        history = [(role, text) for role, text in history if text]
+        
+        if not history:
+            return context
+        
+        # Try to get appropriate encoding
         try:
-            encoding = tiktoken.get_encoding("cl100k_base")
-        except Exception:
-            # If tiktoken fails, just use character count approximation
-            # Roughly 4 characters per token
-            def count_tokens(text: str) -> int:
-                return len(text) // 4
-        else:
+            encoding = tiktoken.get_encoding(encoding_name)
             def count_tokens(text: str) -> int:
                 return len(encoding.encode(text))
+        except (KeyError, ValueError, LookupError):
+            # If encoding fails, use character count approximation
+            # For Russian/Cyrillic text, use more conservative ratio
+            def count_tokens(text: str) -> int:
+                # Roughly 3 chars per token for mixed Latin/Cyrillic
+                return max(len(text) // 3, 1)
         
         # Count system prompt tokens
         system_tokens = count_tokens(system_prompt[1])
@@ -185,4 +192,5 @@ class MessageStore:
         
         context.extend(included_history)
         return context
+
 

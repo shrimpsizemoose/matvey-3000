@@ -79,6 +79,7 @@ class Config:
         '/sum',
         '/samari',
         '/sosum',
+        '/new_chat',
     ]
 
     @classmethod

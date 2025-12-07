@@ -118,6 +118,7 @@ async def dump_set_prompt(message: types.Message, command: types.CommandObject):
 
 
 @router.message(
+    config.filter_command_not_disabled_for_chat,
     config.filter_chat_allowed,
     Command(commands=['new_chat']),
 )
@@ -131,7 +132,6 @@ async def handle_new_chat(message: types.Message):
         f'Starting fresh conversation.'
     )
     await react(success=True, message=message)
-
 
 
 @router.message(
@@ -370,6 +370,7 @@ async def handle_text_message(message: types.Message):
     save_messages = chat_config.save_messages
     context_enabled = chat_config.context_enabled
     
+    # Define tag for potential use in context building and message saving
     tag = f'matvey-3000:history:{config.me_strip_lower}:{message.chat.id}'
     
     if save_messages:
@@ -419,9 +420,8 @@ async def handle_text_message(message: types.Message):
             system_prompt=system_prompt,
             max_tokens=4000,
         )
-        # Add current message if not already in context
-        if not messages_to_send or messages_to_send[-1][1] != message.text:
-            messages_to_send.append(('user', message.text))
+        # Always add current message (it was just saved to Redis)
+        messages_to_send.append(('user', message.text))
     else:
         # Fallback to thread-based context
         messages_to_send = [
