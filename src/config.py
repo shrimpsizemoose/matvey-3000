@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import functools
+import logging
 import os
 import pathlib
 import tomllib
 from dataclasses import dataclass
 
 from aiogram import types
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -84,6 +88,7 @@ class Config:
 
     @classmethod
     def read_toml(cls, path) -> Config:
+        logger.info('Loading config from %s', path)
         with pathlib.Path(path).open('rb') as fp:
             config = tomllib.load(fp)
 
@@ -108,6 +113,10 @@ class Config:
         }
 
         git_sha = os.getenv('GIT_SHA_ENV', 'Unknown')
+
+        logger.info('Config loaded: version=%s, bot=%s, allowed_chats=%d, default_provider=%s',
+                    config['version'], config['me'], len(allowed_chat_ids), default_provider)
+        logger.debug('Allowed chat IDs: %s', allowed_chat_ids)
 
         return cls(
             me=config['me'],
@@ -152,10 +161,14 @@ class Config:
         }[provider]
 
     async def filter_chat_allowed(self, message) -> bool:
-        return message.chat.id in self.allowed_chat_id
+        allowed = message.chat.id in self.allowed_chat_id
+        if not allowed:
+            logger.debug('Chat not allowed: chat_id=%s', message.chat.id)
+        return allowed
 
     async def filter_command_not_disabled_for_chat(self, message) -> bool:
-        if message.chat.id not in self:
+        if message.chat.id not in self.allowed_chat_id:
+            logger.debug('Chat not in config: chat_id=%s', message.chat.id)
             return False
         if not self[message.chat.id].disabled_commands:
             return True
@@ -164,6 +177,7 @@ class Config:
         if not commands:
             return True
         if commands[0] in self[message.chat.id].disabled_commands:
+            logger.debug('Command disabled for chat: command=%s, chat_id=%s', commands[0], message.chat.id)
             react = types.reaction_type_emoji.ReactionTypeEmoji(
                 type='emoji', emoji='🙊'
             )
@@ -172,12 +186,17 @@ class Config:
         return True
 
     async def filter_is_admin(self, message) -> bool:
-        return self[message.chat.id].is_admin
+        is_admin = self[message.chat.id].is_admin
+        logger.debug('Admin check for chat_id=%s: is_admin=%s', message.chat.id, is_admin)
+        return is_admin
 
     async def filter_summary_enabled(self, message) -> bool:
-        return self[message.chat.id].summary_enabled
+        enabled = self[message.chat.id].summary_enabled
+        logger.debug('Summary enabled check for chat_id=%s: enabled=%s', message.chat.id, enabled)
+        return enabled
 
     def override_prompt_for_chat(self, chat_id, new_prompt) -> bool:
+        logger.info('Overriding prompt for chat_id=%s, new_prompt_length=%d', chat_id, len(new_prompt))
         self.configs[chat_id].prompt = new_prompt
         return True
 
@@ -200,10 +219,14 @@ class Config:
         return '\n'.join(lines)
 
     def provider_for_chat_id(self, chat_id) -> str:
-        return self.configs[chat_id].provider
+        provider = self.configs[chat_id].provider
+        logger.debug('Provider for chat_id=%s: %s', chat_id, provider)
+        return provider
 
     def override_provider_for_chat_id(self, chat_id, new_provider) -> str:
+        old_provider = self.configs[chat_id].provider
         self.configs[chat_id].provider = new_provider
+        logger.info('Provider changed for chat_id=%s: %s -> %s', chat_id, old_provider, new_provider)
 
     def model_for_chat_id(self, chat_id) -> str:
         provider = self.provider_for_chat_id(chat_id)
