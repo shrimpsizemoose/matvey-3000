@@ -16,11 +16,16 @@ from PIL import Image
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
 from aiogram.client.default import DefaultBotProperties
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.redis import RedisStorage
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import Config
 from chat_completions import TextResponse, ImageResponse
+from image_utils import create_mask_from_comparison, prepare_image_for_dalle
 from message_store import MessageStore, StoredChatMessage
+from states import EditPicStates
 
 
 API_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
@@ -294,64 +299,266 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
             await react(success=True, message=message)
 
 
+def get_cancel_keyboard() -> types.InlineKeyboardMarkup:
+    """Create inline keyboard with cancel button."""
+    builder = InlineKeyboardBuilder()
+    builder.button(text='Cancel', callback_data='cancel_edit_wizard')
+    return builder.as_markup()
+
+
+# ============ /edit_pic Wizard Handlers ============
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['edit_pic']),
+    ~F.photo,
+)
+async def start_edit_pic_wizard(
+    message: types.Message,
+    state: FSMContext,
+) -> None:
+    """Step 1: User sends /edit_pic command. Start wizard."""
+    logger.info('Edit pic wizard started: chat_id=%s, user=%s',
+                message.chat.id, message.from_user.username)
+
+    await state.set_state(EditPicStates.waiting_for_original)
+
+    await message.answer(
+        'Step 1/3: Send me the <b>original image</b> you want to edit.',
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(
+    StateFilter(EditPicStates.waiting_for_original),
+    F.photo,
+)
+async def receive_original_image(
+    message: types.Message,
+    state: FSMContext,
+) -> None:
+    """Step 2: User sends original photo. Store it and ask for marked version."""
+    logger.info('Original image received: chat_id=%s, user=%s',
+                message.chat.id, message.from_user.username)
+
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_bytes = await bot.download_file(file.file_path)
+
+    prepared = prepare_image_for_dalle(file_bytes.read())
+
+    message_store.store_temp_image(
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        image_key='original',
+        image_bytes=prepared,
+        ttl_seconds=300,
+    )
+
+    await state.set_state(EditPicStates.waiting_for_marked)
+
+    await message.answer(
+        'Step 2/3: Now <b>draw over the areas you want to edit</b> '
+        '(use any bright color like red, green, or yellow) and send the marked image.\n\n'
+        'Tip: Use a photo editor or Telegram\'s built-in drawing tool.',
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(
+    StateFilter(EditPicStates.waiting_for_marked),
+    F.photo,
+)
+async def receive_marked_image(
+    message: types.Message,
+    state: FSMContext,
+) -> None:
+    """Step 3: User sends marked photo. Store it and ask for prompt."""
+    logger.info('Marked image received: chat_id=%s, user=%s',
+                message.chat.id, message.from_user.username)
+
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_bytes = await bot.download_file(file.file_path)
+
+    prepared = prepare_image_for_dalle(file_bytes.read())
+
+    message_store.store_temp_image(
+        chat_id=message.chat.id,
+        user_id=message.from_user.id,
+        image_key='marked',
+        image_bytes=prepared,
+        ttl_seconds=300,
+    )
+
+    await state.set_state(EditPicStates.waiting_for_prompt)
+
+    await message.answer(
+        'Step 3/3: What should appear in the marked areas?\n'
+        'Send a text description (e.g., "a red rose", "clear blue sky", "remove the object").',
+        reply_markup=get_cancel_keyboard(),
+    )
+
+
+@router.message(
+    StateFilter(EditPicStates.waiting_for_prompt),
+    F.text,
+    ~F.text.startswith('/'),
+)
+async def receive_edit_prompt(
+    message: types.Message,
+    state: FSMContext,
+) -> None:
+    """Step 4: User sends prompt. Create mask, call DALL-E 2 edit, return result."""
+    logger.info('Edit prompt received: chat_id=%s, user=%s, prompt=%r',
+                message.chat.id, message.from_user.username, message.text[:50])
+
+    prompt = message.text
+
+    await message.chat.do('upload_photo')
+    progress_msg = await message.answer('Processing your edit request...')
+
+    try:
+        original = message_store.get_temp_image(
+            message.chat.id, message.from_user.id, 'original'
+        )
+        marked = message_store.get_temp_image(
+            message.chat.id, message.from_user.id, 'marked'
+        )
+
+        if not original or not marked:
+            await progress_msg.edit_text(
+                'Session expired. Please start over with /edit_pic'
+            )
+            await state.clear()
+            return
+
+        await progress_msg.edit_text('Creating mask from your markings...')
+        try:
+            mask = create_mask_from_comparison(original, marked)
+        except ValueError as e:
+            await progress_msg.edit_text(str(e))
+            await state.clear()
+            message_store.clear_temp_images(message.chat.id, message.from_user.id)
+            await react(success=False, message=message)
+            return
+
+        await progress_msg.edit_text('Generating edited image with DALL-E 2...')
+        response = await ImageResponse.edit_with_mask(original, mask, prompt)
+
+        await state.clear()
+        message_store.clear_temp_images(message.chat.id, message.from_user.id)
+        await progress_msg.delete()
+
+        if response.success:
+            image_from_url = types.URLInputFile(response.b64_or_url)
+            await message.answer_photo(
+                image_from_url,
+                caption=f'DALL-E 2 edit: {prompt}',
+            )
+            await react(success=True, message=message)
+        else:
+            await message.answer(response.b64_or_url)
+            await react(success=False, message=message)
+
+    except Exception as e:
+        logger.error('Edit pic wizard error: %s', e, exc_info=True)
+        await state.clear()
+        message_store.clear_temp_images(message.chat.id, message.from_user.id)
+        await progress_msg.edit_text(f'Error: {e}')
+        await react(success=False, message=message)
+
+
+@router.message(
+    Command(commands=['cancel']),
+    StateFilter(EditPicStates),
+)
+async def cancel_wizard(
+    message: types.Message,
+    state: FSMContext,
+) -> None:
+    """Cancel the wizard at any step."""
+    logger.info('Edit pic wizard cancelled: chat_id=%s, user=%s',
+                message.chat.id, message.from_user.username)
+
+    await state.clear()
+    message_store.clear_temp_images(message.chat.id, message.from_user.id)
+
+    await message.answer('Edit cancelled.')
+    await react(success=True, message=message)
+
+
+@router.callback_query(F.data == 'cancel_edit_wizard')
+async def cancel_wizard_callback(
+    callback: types.CallbackQuery,
+    state: FSMContext,
+) -> None:
+    """Cancel wizard via inline button."""
+    logger.info('Edit pic wizard cancelled via button: chat_id=%s, user=%s',
+                callback.message.chat.id, callback.from_user.username)
+
+    await state.clear()
+    message_store.clear_temp_images(callback.message.chat.id, callback.from_user.id)
+
+    await callback.message.edit_text('Edit cancelled.')
+    await callback.answer()
+
+
+# ============ /reimagine Handler ============
+
 @router.message(
     F.photo,
     config.filter_chat_allowed,
     config.filter_command_not_disabled_for_chat,
-    Command(commands=['edit_pic'], ignore_mention=True),
+    Command(commands=['reimagine'], ignore_mention=True),
 )
-async def handle_edit_pic(message: types.Message, command: types.CommandObject):
-    logger.info('Command /edit_pic received from chat_id=%s user=%s',
+async def handle_reimagine(
+    message: types.Message,
+    command: types.CommandObject,
+) -> None:
+    """Vision + DALL-E 3 reimagine flow."""
+    logger.info('Reimagine command: chat_id=%s, user=%s',
                 message.chat.id, message.from_user.username)
 
-    prompt = command.args
-    if not prompt:
-        logger.debug('No prompt provided for /edit_pic in chat_id=%s', message.chat.id)
+    modification = command.args
+    if not modification:
         await message.reply(
-            'Пожалуйста, добавь описание того, как отредактировать картинку.\n'
-            'Пример: <code>/edit_pic сделай фон зелёным</code>'
+            'Please provide a description of how you want to modify the image.\n'
+            'Example: <code>/reimagine make it look like a watercolor painting</code>'
         )
         await react(success=False, message=message)
         return
 
     await message.chat.do('upload_photo')
+    progress_msg = await message.answer('Analyzing image with GPT-4 Vision...')
 
     try:
         photo = message.photo[-1]
-        logger.debug('Downloading photo: file_id=%s, width=%d, height=%d',
-                     photo.file_id, photo.width, photo.height)
-
         file = await bot.get_file(photo.file_id)
         file_bytes = await bot.download_file(file.file_path)
+        image_bytes = file_bytes.read()
 
-        # Convert to 512x512 PNG (DALL-E 2 requirement)
-        image = Image.open(file_bytes)
-        image = image.convert('RGBA')
-        image = image.resize((512, 512), Image.Resampling.LANCZOS)
+        await progress_msg.edit_text('Reimagining with DALL-E 3...')
 
-        png_buffer = io.BytesIO()
-        image.save(png_buffer, format='PNG')
-        png_bytes = png_buffer.getvalue()
-        logger.debug('Image converted to PNG: size=%d bytes', len(png_bytes))
+        response = await ImageResponse.reimagine(image_bytes, modification)
 
-        response = await ImageResponse.edit(png_bytes, prompt)
+        await progress_msg.delete()
 
         if response.success:
-            logger.info('Image edit successful for chat_id=%s', message.chat.id)
             image_from_url = types.URLInputFile(response.b64_or_url)
-            caption = f'DALL-E 2 edit: {prompt}'
-            await message.answer_photo(image_from_url, caption=caption)
+            await message.answer_photo(
+                image_from_url,
+                caption=f'Reimagined: {modification}',
+            )
             await react(success=True, message=message)
         else:
-            logger.warning('Image edit failed for chat_id=%s: %s',
-                           message.chat.id, response.b64_or_url[:100])
-            await message.reply(response.b64_or_url)
+            await message.answer(response.b64_or_url)
             await react(success=False, message=message)
 
     except Exception as e:
-        logger.error('Error processing /edit_pic for chat_id=%s: %s',
-                     message.chat.id, e, exc_info=True)
-        await message.reply(f'Ошибка при редактировании картинки: {e}')
+        logger.error('Reimagine error: %s', e, exc_info=True)
+        await progress_msg.edit_text(f'Error: {e}')
         await react(success=False, message=message)
 
 
@@ -613,7 +820,17 @@ async def handle_text_message(message: types.Message):
 async def main():
     logger.info('Starting bot with config version=%s, bot_username=%s', config.version, config.me)
     logger.info('Configured chats: %d, git_sha=%s', len(config), config.git_sha)
-    dp = Dispatcher()
+
+    # Setup Redis storage for FSM with 5-minute state TTL
+    redis_url = os.getenv('REDIS_URL')
+    storage = RedisStorage.from_url(
+        redis_url,
+        key_prefix='matvey-3000:fsm:',
+        state_ttl=300,
+        data_ttl=300,
+    )
+
+    dp = Dispatcher(storage=storage)
     dp.include_router(router)
     logger.info('Bot polling started')
     await dp.start_polling(bot)

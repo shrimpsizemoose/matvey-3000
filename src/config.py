@@ -73,6 +73,8 @@ class Config:
         '/pic3',
         '/pik',
         '/edit_pic',
+        '/reimagine',
+        '/cancel',
         '/blerb',
         '/mode_claude',
         '/mode_chatgpt',

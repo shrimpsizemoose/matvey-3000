@@ -221,6 +221,185 @@ class ImageResponse:
             return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
 
     @classmethod
+    async def edit_with_mask(
+        cls,
+        image_bytes: bytes,
+        mask_bytes: bytes,
+        prompt: str,
+    ):
+        """
+        Edit image using DALL-E 2 with an explicit mask.
+
+        Args:
+            image_bytes: Original image as PNG bytes (RGBA, 512x512)
+            mask_bytes: Mask PNG with transparent areas where edits should occur
+            prompt: Description of what should appear in the masked areas
+
+        Returns:
+            ImageResponse with URL to edited image or error message
+        """
+        logger.info(
+            'Image edit with mask requested: prompt_length=%d, image_size=%d, mask_size=%d',
+            len(prompt or ''), len(image_bytes), len(mask_bytes)
+        )
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        try:
+            response = await client.images.edit(
+                model='dall-e-2',
+                image=('image.png', image_bytes, 'image/png'),
+                mask=('mask.png', mask_bytes, 'image/png'),
+                prompt=prompt,
+                n=1,
+                size='512x512',
+            )
+            logger.info('Image edit with mask successful')
+            return cls(success=True, b64_or_url=response.data[0].url)
+        except openai.BadRequestError as e:
+            logger.warning('Image edit with mask BadRequestError: %s', e)
+            return cls(success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}')
+        except openai.RateLimitError as e:
+            logger.warning('Image edit with mask RateLimitError: %s', e)
+            return cls(success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}')
+        except TimeoutError as e:
+            logger.error('Image edit with mask TimeoutError: %s', e)
+            return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
+
+    @classmethod
+    async def describe_image(cls, image_bytes: bytes) -> TextResponse:
+        """
+        Use GPT-4o Vision to describe an image.
+
+        Args:
+            image_bytes: Image as bytes (any common format)
+
+        Returns:
+            TextResponse with detailed description or error message
+        """
+        import base64
+
+        logger.info('Image description requested: image_size=%d', len(image_bytes))
+
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        # Encode image to base64
+        b64_image = base64.b64encode(image_bytes).decode('utf-8')
+
+        try:
+            response = await client.chat.completions.create(
+                model='gpt-4o',
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are an expert image analyst. Describe the image in detail, '
+                            'including: subject matter, composition, colors, style, mood, '
+                            'lighting, and any notable elements. Be specific enough that '
+                            'the description could be used to recreate a similar image.'
+                        )
+                    },
+                    {
+                        'role': 'user',
+                        'content': [
+                            {
+                                'type': 'image_url',
+                                'image_url': {
+                                    'url': f'data:image/jpeg;base64,{b64_image}',
+                                    'detail': 'auto',
+                                }
+                            },
+                            {
+                                'type': 'text',
+                                'text': 'Describe this image in detail.'
+                            }
+                        ]
+                    }
+                ],
+                max_tokens=1000,
+            )
+            description = response.choices[0].message.content
+            logger.info('Image description successful: length=%d', len(description))
+            return TextResponse(success=True, text=description)
+        except openai.BadRequestError as e:
+            logger.warning('Image description BadRequestError: %s', e)
+            return TextResponse(success=False, text=f'Не удалось проанализировать картинку: {e}')
+        except openai.RateLimitError as e:
+            logger.warning('Image description RateLimitError: %s', e)
+            return TextResponse(success=False, text=f'Рейт-лимит превышен: {e}')
+        except TimeoutError as e:
+            logger.error('Image description TimeoutError: %s', e)
+            return TextResponse(success=False, text=f'Таймаут сети: {e}')
+
+    @classmethod
+    async def reimagine(
+        cls,
+        image_bytes: bytes,
+        modification_prompt: str,
+    ):
+        """
+        Reimagine an image using Vision + DALL-E 3.
+
+        This method:
+        1. Uses GPT-4o Vision to describe the image
+        2. Modifies the description based on user's request
+        3. Generates a new image with DALL-E 3
+
+        Args:
+            image_bytes: Original image bytes
+            modification_prompt: User's requested changes
+
+        Returns:
+            ImageResponse with URL to new image
+        """
+        logger.info('Reimagine requested: image_size=%d, mod_length=%d',
+                    len(image_bytes), len(modification_prompt))
+
+        # Step 1: Describe the image
+        description_response = await cls.describe_image(image_bytes)
+        if not description_response.success:
+            return cls(success=False, b64_or_url=description_response.text)
+
+        original_description = description_response.text
+
+        # Step 2: Create modified prompt using GPT
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        try:
+            prompt_response = await client.chat.completions.create(
+                model='gpt-4o-mini',
+                messages=[
+                    {
+                        'role': 'system',
+                        'content': (
+                            'You are a creative prompt engineer for DALL-E 3. '
+                            'Given an original image description and a modification request, '
+                            'create a new prompt that combines both. The result should be a '
+                            'detailed, vivid description suitable for image generation. '
+                            'Keep it under 1000 characters. Output ONLY the prompt, no explanation.'
+                        )
+                    },
+                    {
+                        'role': 'user',
+                        'content': (
+                            f'Original image description:\n{original_description}\n\n'
+                            f'Modification request:\n{modification_prompt}\n\n'
+                            'Create a new image generation prompt that applies the modification.'
+                        )
+                    }
+                ],
+                max_tokens=500,
+            )
+            modified_prompt = prompt_response.choices[0].message.content
+            logger.debug('Modified prompt created: %s', modified_prompt[:100])
+        except Exception as e:
+            logger.warning('Prompt modification failed: %s, using fallback', e)
+            modified_prompt = f'{original_description}. Modified: {modification_prompt}'
+
+        # Step 3: Generate new image with DALL-E 3
+        return await cls._generate_dalle(
+            client, modified_prompt, model='dall-e-3', size='1024x1024'
+        )
+
+    @classmethod
     async def generate(cls, prompt, mode='dall-e'):
         logger.info('Image generation requested: mode=%s, prompt_length=%d', mode, len(prompt or ''))
         openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))

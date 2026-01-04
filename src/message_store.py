@@ -211,3 +211,73 @@ class MessageStore:
         context.extend(included_history)
         logger.debug('Context built: total_messages=%d, estimated_tokens=%d', len(context), total_tokens)
         return context
+
+    def store_temp_image(
+        self,
+        chat_id: int,
+        user_id: int,
+        image_key: str,
+        image_bytes: bytes,
+        ttl_seconds: int = 300,
+    ) -> None:
+        """
+        Store temporary image data for wizard flow.
+
+        Args:
+            chat_id: Telegram chat ID
+            user_id: Telegram user ID
+            image_key: Key identifier ('original' or 'marked')
+            image_bytes: PNG image bytes
+            ttl_seconds: Time-to-live in seconds (default 5 minutes)
+        """
+        key = f'matvey-3000:temp_image:{chat_id}:{user_id}:{image_key}'
+        self.redis_conn.setex(key, ttl_seconds, image_bytes)
+        logger.debug('Temp image stored: key=%s, size=%d, ttl=%d', key, len(image_bytes), ttl_seconds)
+
+    def get_temp_image(
+        self,
+        chat_id: int,
+        user_id: int,
+        image_key: str,
+    ) -> bytes | None:
+        """
+        Retrieve temporary image data.
+
+        Args:
+            chat_id: Telegram chat ID
+            user_id: Telegram user ID
+            image_key: Key identifier ('original' or 'marked')
+
+        Returns:
+            Image bytes if found, None otherwise
+        """
+        key = f'matvey-3000:temp_image:{chat_id}:{user_id}:{image_key}'
+        data = self.redis_conn.get(key)
+        if data:
+            logger.debug('Temp image retrieved: key=%s, size=%d', key, len(data))
+        else:
+            logger.debug('Temp image not found: key=%s', key)
+        return data
+
+    def clear_temp_images(
+        self,
+        chat_id: int,
+        user_id: int,
+    ) -> int:
+        """
+        Clear all temporary images for a user in a chat.
+
+        Args:
+            chat_id: Telegram chat ID
+            user_id: Telegram user ID
+
+        Returns:
+            Number of keys deleted
+        """
+        pattern = f'matvey-3000:temp_image:{chat_id}:{user_id}:*'
+        keys = self.redis_conn.keys(pattern)
+        count = 0
+        if keys:
+            count = self.redis_conn.delete(*keys)
+            logger.debug('Temp images cleared: pattern=%s, count=%d', pattern, count)
+        return count
