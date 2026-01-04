@@ -70,10 +70,10 @@ class Config:
 
     ALL_COMMANDS = [
         '/pic',
+        '/pic3',
         '/pik',
         '/edit_pic',
         '/blerb',
-        '/pik',
         '/mode_claude',
         '/mode_chatgpt',
         '/mode_yandex',

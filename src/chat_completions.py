@@ -223,29 +223,29 @@ class ImageResponse:
     @classmethod
     async def generate(cls, prompt, mode='dall-e'):
         logger.info('Image generation requested: mode=%s, prompt_length=%d', mode, len(prompt or ''))
-        if mode == 'dall-e':
-            # no other providers yet so meh
-            openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-            return await cls._generate_dalle(openai_client, prompt)
-        elif mode == 'kandinski':
-            async with httpx.AsyncClient() as httpx_client:
-                return await cls._generate_kandinski(
-                    httpx_client,
-                    prompt,
-                )
-        else:
-            logger.error('Unsupported image generation mode: %s', mode)
-            return cls(success=False, b64_or_url=f'Unsupported provider: {mode}')
+        openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        match mode:
+            case 'dall-e':
+                return await cls._generate_dalle(openai_client, prompt, model='dall-e-2', size='512x512')
+            case 'dall-e-3':
+                return await cls._generate_dalle(openai_client, prompt, model='dall-e-3', size='1024x1024')
+            case 'kandinski':
+                async with httpx.AsyncClient() as httpx_client:
+                    return await cls._generate_kandinski(httpx_client, prompt)
+            case _:
+                logger.error('Unsupported image generation mode: %s', mode)
+                return cls(success=False, b64_or_url=f'Unsupported provider: {mode}')
 
     @classmethod
-    async def _generate_dalle(cls, client, prompt):
-        logger.debug('DALL-E request: prompt=%r', prompt)
+    async def _generate_dalle(cls, client, prompt, model='dall-e-2', size='512x512'):
+        logger.debug('DALL-E request: model=%s, size=%s, prompt=%r', model, size, prompt)
         img_gen_reply = await client.images.generate(
+            model=model,
             prompt=prompt,
             n=1,
-            size='512x512',
+            size=size,
         )
-        logger.info('DALL-E image generated successfully')
+        logger.info('DALL-E image generated successfully: model=%s', model)
         return cls(success=True, b64_or_url=img_gen_reply.data[0].url)
 
     @classmethod

@@ -181,7 +181,45 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         logger.info('DALL-E image generated successfully for chat_id=%s', message.chat.id)
         await message.chat.do('upload_photo')
         image_from_url = types.URLInputFile(response.b64_or_url)
-        caption = f'DALL-E2 prompt: {prompt}'
+        caption = f'DALL-E 2 prompt: {prompt}'
+        await message.answer_photo(image_from_url, caption=caption)
+        await react(success=True, message=message)
+
+
+@router.message(
+    config.filter_command_not_disabled_for_chat,
+    config.filter_chat_allowed,
+    Command(commands=['pic3']),
+)
+async def gimme_pic3(message: types.Message, command: types.CommandObject):
+    logger.info('Command /pic3 received from chat_id=%s user=%s', message.chat.id, message.from_user.username)
+    prompt = command.args
+    logger.debug('DALL-E 3 image generation requested, prompt=%r', prompt)
+    await message.chat.do('upload_photo')
+    try:
+        response = await ImageResponse.generate(prompt, mode='dall-e-3')
+    except openai.BadRequestError as e:
+        logger.warning('DALL-E 3 generation failed for chat_id=%s, prompt=%r, error=%s', message.chat.id, prompt, e)
+        messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
+        messages_to_send.append(
+            (
+                'user',
+                f'объясни трагикомичной шуткой почему OpenAI не может сгенерировать картинку по запросу "{prompt}"',  # noqa
+            )
+        )
+        await message.chat.do('typing')
+        llm_reply = await TextResponse.generate(
+            config=config,
+            chat_id=message.chat.id,
+            messages=messages_to_send,
+        )
+        await message.answer(llm_reply.text)
+        await react(success=False, message=message)
+    else:
+        logger.info('DALL-E 3 image generated successfully for chat_id=%s', message.chat.id)
+        await message.chat.do('upload_photo')
+        image_from_url = types.URLInputFile(response.b64_or_url)
+        caption = f'DALL-E 3 prompt: {prompt}'
         await message.answer_photo(image_from_url, caption=caption)
         await react(success=True, message=message)
 
