@@ -203,7 +203,7 @@ class ImageResponse:
         try:
             response = await client.images.edit(
                 model="dall-e-2",
-                image=image_bytes,
+                image=("image.png", image_bytes, "image/png"),
                 prompt=prompt,
                 n=1,
                 size="512x512",
