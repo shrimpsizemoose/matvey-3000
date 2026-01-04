@@ -71,6 +71,7 @@ class Config:
     ALL_COMMANDS = [
         '/pic',
         '/pik',
+        '/edit_pic',
         '/blerb',
         '/pik',
         '/mode_claude',

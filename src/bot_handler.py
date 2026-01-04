@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import collections
+import io
 import logging
 import os
 import random
@@ -10,6 +11,7 @@ import time
 
 import openai
 import tiktoken
+from PIL import Image
 
 from aiogram import F
 from aiogram import Bot, Dispatcher, Router, html, types
@@ -252,6 +254,67 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
                 caption=caption,
             )
             await react(success=True, message=message)
+
+
+@router.message(
+    F.photo,
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=['edit_pic'], ignore_mention=True),
+)
+async def handle_edit_pic(message: types.Message, command: types.CommandObject):
+    logger.info('Command /edit_pic received from chat_id=%s user=%s',
+                message.chat.id, message.from_user.username)
+
+    prompt = command.args
+    if not prompt:
+        logger.debug('No prompt provided for /edit_pic in chat_id=%s', message.chat.id)
+        await message.reply(
+            'Пожалуйста, добавь описание того, как отредактировать картинку.\n'
+            'Пример: <code>/edit_pic сделай фон зелёным</code>'
+        )
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do('upload_photo')
+
+    try:
+        photo = message.photo[-1]
+        logger.debug('Downloading photo: file_id=%s, width=%d, height=%d',
+                     photo.file_id, photo.width, photo.height)
+
+        file = await bot.get_file(photo.file_id)
+        file_bytes = await bot.download_file(file.file_path)
+
+        # Convert to 512x512 PNG (DALL-E 2 requirement)
+        image = Image.open(file_bytes)
+        image = image.convert('RGBA')
+        image = image.resize((512, 512), Image.Resampling.LANCZOS)
+
+        png_buffer = io.BytesIO()
+        image.save(png_buffer, format='PNG')
+        png_bytes = png_buffer.getvalue()
+        logger.debug('Image converted to PNG: size=%d bytes', len(png_bytes))
+
+        response = await ImageResponse.edit(png_bytes, prompt)
+
+        if response.success:
+            logger.info('Image edit successful for chat_id=%s', message.chat.id)
+            image_from_url = types.URLInputFile(response.b64_or_url)
+            caption = f'DALL-E 2 edit: {prompt}'
+            await message.answer_photo(image_from_url, caption=caption)
+            await react(success=True, message=message)
+        else:
+            logger.warning('Image edit failed for chat_id=%s: %s',
+                           message.chat.id, response.b64_or_url[:100])
+            await message.reply(response.b64_or_url)
+            await react(success=False, message=message)
+
+    except Exception as e:
+        logger.error('Error processing /edit_pic for chat_id=%s: %s',
+                     message.chat.id, e, exc_info=True)
+        await message.reply(f'Ошибка при редактировании картинки: {e}')
+        await react(success=False, message=message)
 
 
 @router.message(

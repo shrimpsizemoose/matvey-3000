@@ -196,6 +196,31 @@ class ImageResponse:
     censored: bool = False
 
     @classmethod
+    async def edit(cls, image_bytes: bytes, prompt: str):
+        logger.info('Image edit requested: prompt_length=%d, image_size=%d bytes',
+                    len(prompt or ''), len(image_bytes))
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        try:
+            response = await client.images.edit(
+                model="dall-e-2",
+                image=image_bytes,
+                prompt=prompt,
+                n=1,
+                size="512x512",
+            )
+            logger.info('Image edit successful')
+            return cls(success=True, b64_or_url=response.data[0].url)
+        except openai.BadRequestError as e:
+            logger.warning('Image edit BadRequestError: %s', e)
+            return cls(success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}')
+        except openai.RateLimitError as e:
+            logger.warning('Image edit RateLimitError: %s', e)
+            return cls(success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}')
+        except TimeoutError as e:
+            logger.error('Image edit TimeoutError: %s', e)
+            return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
+
+    @classmethod
     async def generate(cls, prompt, mode='dall-e'):
         logger.info('Image generation requested: mode=%s, prompt_length=%d', mode, len(prompt or ''))
         if mode == 'dall-e':

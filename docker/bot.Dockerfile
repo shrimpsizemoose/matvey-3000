@@ -23,6 +23,7 @@ RUN pip install \
         hiredis==2.3.2 \
         httpx==0.27.0 \
         openai==1.30.0 \
+        Pillow==10.3.0 \
         redis==5.0.4 \
         tiktoken==0.7.0
 
