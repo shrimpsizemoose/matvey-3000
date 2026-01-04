@@ -6,7 +6,13 @@ VERSION=$(shell git describe --tags)
 BOT_SERVICE_TAG=${REGISTRY}/${NAMESPACE}/${APP}:${VERSION}
 
 run:
-	PYTHONPATH=src python -B src/bot_handler.py
+	uv run python src/bot_handler.py
+
+sync:
+	uv sync
+
+lock:
+	uv lock
 
 @build-bot:
 	docker build -t ${BOT_SERVICE_TAG} -f docker/bot.Dockerfile .
@@ -14,7 +20,7 @@ run:
 @push-bot:
 	docker push ${BOT_SERVICE_TAG}
 @test:
-	PYTHONPATH=src pytest -s -vv tests/
+	uv run pytest -s -vv tests/
 
 echo-version:
 	@echo current version tag is ${VERSION}

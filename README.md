@@ -15,17 +15,23 @@ docker compose up
 
 ## quickstart quide
 
-### 0. Install packages
+### 0. Install uv and dependencies
 
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+
+Install uv (if not already installed):
 ```
-pip install openai anthropic httpx
-pip install -U aiogram
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Install dependencies:
+```
+uv sync
 ```
 
 This project works with python 3.11+.
-Also make sure you use aiogram version 3 (~ tested on aiogram==3.4.1)
 
-### 1. Set environmental variables 
+### 1. Set environmental variables
 
 | var | example | meaning |
 | --- | ------  | ------- |
@@ -47,19 +53,30 @@ See [.envrc_template](./.envrc_template) for example [diren](https://direnv.net/
 make run
 ```
 
+Or directly with uv:
+```
+uv run python src/bot_handler.py
+```
+
 ### 3. Add bot to groups, and send messages
 
 First message needs to be tagged. Responses are handled automatically. Messages with length of 1 are discarded
 
 Don't know the group id? Launch the script, add the bot to the chat and issue a `/blerb` command to see chat id info in the logs.
 
-## Using docker-compose
+## Development
 
-Copy matvey-template.toml to matvey.toml, adjust accordingly, copy example docker-compose template and adjust env vars:
-
+Run tests:
 ```
-cp matvey-template.toml matvey.toml
-cp docker-compose-template.yml docker-compose.yml
-(edit both files)
-docker compose up
+make @test
+```
+
+Or directly:
+```
+uv run pytest -s -vv tests/
+```
+
+Update dependencies:
+```
+make lock
 ```
