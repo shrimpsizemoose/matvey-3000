@@ -8,3 +8,5 @@ export KANDINSKI_API_SECRET=A470B............98942
 export BOT_CONFIG_TOML=$(pwd)/matvey.toml
 
 export REDIS_URL=redis://localhost:31337/0
+# Optional: FSM state prefix for shared Redis (default: fsm:<bot_username>)
+# export FSM_REDIS_PREFIX=mybot:fsm
