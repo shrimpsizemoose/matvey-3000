@@ -43,6 +43,8 @@ This project works with python 3.11+.
 | `KANDINSKI_API_KEY` | `CD53.................0F49F` | kandinski api key |
 | `KANDINSKI_API_SECRET` | `4A470B............98942` | kandinski api secret |
 | `BOT_CONFIG_TOML` | `/etc/matvey.toml` | take matvey-template.toml as example |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis for message history and FSM state |
+| `FSM_REDIS_PREFIX` | `fsm:mybot` | optional prefix for FSM keys (default: `fsm:<bot_username>`) |
 
 Set up only the ones that you are going to use
 See [.envrc_template](./.envrc_template) for example [diren](https://direnv.net/) config
@@ -63,6 +65,45 @@ uv run python src/bot_handler.py
 First message needs to be tagged. Responses are handled automatically. Messages with length of 1 are discarded
 
 Don't know the group id? Launch the script, add the bot to the chat and issue a `/blerb` command to see chat id info in the logs.
+
+## Commands
+
+| Command | Description |
+| ------- | ----------- |
+| `/pic <prompt>` | Generate image with DALL-E 2 |
+| `/pic3 <prompt>` | Generate image with DALL-E 3 |
+| `/pik <prompt>` | Generate image with Kandinski |
+| `/edit_pic` | Multi-step image editing wizard (DALL-E 2 inpainting) |
+| `/reimagine <modification>` | Reimagine attached photo with GPT-4 Vision + DALL-E 3 |
+| `/tts <text>` | Convert text to speech (requires `voice_enabled`) |
+| `/ru <text>` | Translate to Russian |
+| `/en <text>` | Translate to English |
+| `/mode_claude` | Switch to Anthropic Claude |
+| `/mode_chatgpt` | Switch to OpenAI ChatGPT |
+| `/mode_yandex` | Switch to YandexGPT |
+| `/prompt [new_prompt]` | Show or set system prompt |
+| `/new_chat` | Clear conversation history |
+| `/blerb` | Show chat ID |
+| `/cancel` | Cancel current wizard |
+
+Voice messages are automatically transcribed when `voice_enabled` is set.
+
+## Per-chat configuration
+
+In your TOML config, each chat can have these options:
+
+```toml
+[[chats.allowed]]
+id = 123456789
+who = "user or group name"
+provider = "openai"           # openai, anthropic, or yandexgpt
+save_messages = true          # persist messages to Redis
+context_enabled = true        # use conversation history
+max_context_messages = 10     # how many messages to include
+summary_enabled = false       # enable /sammari command
+voice_enabled = false         # enable voice transcription and /tts
+disabled_commands = ["/pik"]  # disable specific commands
+```
 
 ## Development
 

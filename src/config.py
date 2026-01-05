@@ -23,6 +23,7 @@ class ChatConfig:
     is_admin: bool = False
     save_messages: bool = False
     summary_enabled: bool = False
+    voice_enabled: bool = False
     disabled_commands: list[str] | None = None
     context_enabled: bool = True
     max_context_messages: int = 10
@@ -37,6 +38,7 @@ class ChatConfig:
             is_admin=False,
             save_messages=False,
             summary_enabled=False,
+            voice_enabled=False,
             disabled_commands=disabled_commands,
             who="i don't know who",
             context_enabled=False,
@@ -74,6 +76,7 @@ class Config:
         '/pik',
         '/edit_pic',
         '/reimagine',
+        '/tts',
         '/cancel',
         '/blerb',
         '/mode_claude',
@@ -108,6 +111,7 @@ class Config:
                 is_admin=chat.get('is_admin', False),
                 save_messages=chat.get('save_messages', False),
                 summary_enabled=chat.get('summary_enabled', False),
+                voice_enabled=chat.get('voice_enabled', False),
                 disabled_commands=chat.get('disabled_commands', []),
                 context_enabled=chat.get('context_enabled', True),
                 max_context_messages=chat.get('max_context_messages', 10),
@@ -196,6 +200,11 @@ class Config:
     async def filter_summary_enabled(self, message) -> bool:
         enabled = self[message.chat.id].summary_enabled
         logger.debug('Summary enabled check for chat_id=%s: enabled=%s', message.chat.id, enabled)
+        return enabled
+
+    async def filter_voice_enabled(self, message) -> bool:
+        enabled = self[message.chat.id].voice_enabled
+        logger.debug('Voice enabled check for chat_id=%s: enabled=%s', message.chat.id, enabled)
         return enabled
 
     def override_prompt_for_chat(self, chat_id, new_prompt) -> bool:

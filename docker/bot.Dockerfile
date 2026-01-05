@@ -27,7 +27,8 @@ ENV GIT_SHA_ENV=$GIT_SHA
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Create non-root user
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --uid 10001 --no-create-home --shell /bin/false matvey
 
 WORKDIR /bot

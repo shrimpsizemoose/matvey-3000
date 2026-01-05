@@ -189,6 +189,101 @@ class TextResponse:
             )
 
 
+async def speedup_audio(audio_bytes: bytes, factor: float = 2.0) -> bytes:
+    proc = await asyncio.create_subprocess_exec(
+        'ffmpeg', '-i', 'pipe:0',
+        '-filter:a', f'atempo={factor}',
+        '-c:a', 'libopus', '-f', 'ogg',
+        'pipe:1',
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate(input=audio_bytes)
+
+    if proc.returncode != 0:
+        logger.warning('ffmpeg speedup failed: %s', stderr.decode())
+        return audio_bytes
+
+    logger.info('Audio sped up %.1fx: %d -> %d bytes', factor, len(audio_bytes), len(stdout))
+    return stdout
+
+
+@dataclass(frozen=True)
+class AudioResponse:
+    success: bool
+    data: bytes | str  # bytes for audio, str for transcription/error
+
+    @classmethod
+    async def transcribe(
+        cls,
+        audio_bytes: bytes,
+        filename: str = 'audio.ogg',
+        speedup: float = 2.0,
+    ):
+        logger.info('Audio transcription requested: size=%d bytes, filename=%s',
+                    len(audio_bytes), filename)
+
+        if speedup and speedup > 1.0:
+            audio_bytes = await speedup_audio(audio_bytes, speedup)
+
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        try:
+            response = await client.audio.transcriptions.create(
+                model='whisper-1',
+                file=(filename, audio_bytes),
+            )
+            text = response.text
+            logger.info('Audio transcription successful: length=%d chars', len(text))
+            return cls(success=True, data=text)
+        except openai.BadRequestError as e:
+            logger.warning('Audio transcription BadRequestError: %s', e)
+            return cls(success=False, data=f'Не удалось распознать аудио: {e}')
+        except openai.RateLimitError as e:
+            logger.warning('Audio transcription RateLimitError: %s', e)
+            return cls(success=False, data=f'Рейт-лимит превышен: {e}')
+        except Exception as e:
+            logger.error('Audio transcription error: %s', e, exc_info=True)
+            return cls(success=False, data=f'Ошибка транскрипции: {e}')
+
+    @classmethod
+    async def text_to_speech(
+        cls,
+        text: str,
+        voice: str = 'alloy',
+        model: str = 'tts-1',
+    ):
+        logger.info('TTS requested: text_length=%d, voice=%s, model=%s',
+                    len(text), voice, model)
+
+        if len(text) > 4096:
+            logger.warning('TTS text too long: %d chars', len(text))
+            return cls(success=False, data='Текст слишком длинный (макс. 4096 символов)')
+
+        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+        try:
+            response = await client.audio.speech.create(
+                model=model,
+                voice=voice,
+                input=text,
+                response_format='opus',
+            )
+            audio_bytes = response.content
+            logger.info('TTS successful: size=%d bytes', len(audio_bytes))
+            return cls(success=True, data=audio_bytes)
+        except openai.BadRequestError as e:
+            logger.warning('TTS BadRequestError: %s', e)
+            return cls(success=False, data=f'Не удалось синтезировать речь: {e}')
+        except openai.RateLimitError as e:
+            logger.warning('TTS RateLimitError: %s', e)
+            return cls(success=False, data=f'Рейт-лимит превышен: {e}')
+        except Exception as e:
+            logger.error('TTS error: %s', e, exc_info=True)
+            return cls(success=False, data=f'Ошибка синтеза речи: {e}')
+
+
 @dataclass(frozen=True)
 class ImageResponse:
     success: bool

@@ -19,7 +19,7 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from PIL import Image
 
-from chat_completions import ImageResponse, TextResponse
+from chat_completions import AudioResponse, ImageResponse, TextResponse
 from config import Config
 from image_utils import create_mask_from_comparison, prepare_image_for_dalle
 from message_store import MessageStore, StoredChatMessage
@@ -664,6 +664,115 @@ async def handle_reimagine(
     except Exception as e:
         logger.error("Reimagine error: %s", e, exc_info=True)
         await progress_msg.edit_text(f"Error: {e}")
+        await react(success=False, message=message)
+
+
+# ============ Voice Handlers ============
+
+
+MAX_VOICE_DURATION_SECONDS = 300
+
+
+@router.message(
+    F.voice,
+    config.filter_voice_enabled,
+)
+async def handle_voice_message(message: types.Message) -> None:
+    logger.info(
+        "Voice message received: chat_id=%s, user=%s, duration=%s",
+        message.chat.id,
+        message.from_user.username,
+        message.voice.duration,
+    )
+
+    if message.voice.duration > MAX_VOICE_DURATION_SECONDS:
+        await message.reply(
+            f"Voice message too long ({message.voice.duration}s). "
+            f"Max duration: {MAX_VOICE_DURATION_SECONDS // 60} minutes."
+        )
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("typing")
+
+    try:
+        file = await bot.get_file(message.voice.file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        audio_data = file_bytes.read()
+
+        response = await AudioResponse.transcribe(audio_data, filename="voice.ogg")
+
+        if response.success:
+            transcription = response.data
+            logger.info(
+                "Voice transcribed for chat_id=%s, length=%d",
+                message.chat.id,
+                len(transcription),
+            )
+            await message.reply(f"<b>Transcription:</b>\n{transcription}")
+            await react(success=True, message=message)
+        else:
+            logger.warning(
+                "Voice transcription failed for chat_id=%s: %s",
+                message.chat.id,
+                response.data,
+            )
+            await message.reply(f"Transcription failed: {response.data}")
+            await react(success=False, message=message)
+
+    except Exception as e:
+        logger.error("Voice transcription error: %s", e, exc_info=True)
+        await message.reply(f"Error: {e}")
+        await react(success=False, message=message)
+
+
+@router.message(
+    config.filter_voice_enabled,
+    Command(commands=["tts"]),
+)
+async def handle_tts_command(message: types.Message, command: types.CommandObject) -> None:
+    logger.info(
+        "Command /tts received from chat_id=%s user=%s",
+        message.chat.id,
+        message.from_user.username,
+    )
+
+    text = command.args
+    if not text:
+        await message.reply(
+            "Please provide text to convert to speech.\n"
+            "Example: <code>/tts Hello, how are you?</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("record_voice")
+
+    try:
+        response = await AudioResponse.text_to_speech(text)
+
+        if response.success:
+            audio_data = response.data
+            logger.info(
+                "TTS generated for chat_id=%s, audio_size=%d",
+                message.chat.id,
+                len(audio_data),
+            )
+            voice_file = types.BufferedInputFile(audio_data, filename="speech.ogg")
+            await message.reply_voice(voice_file)
+            await react(success=True, message=message)
+        else:
+            logger.warning(
+                "TTS failed for chat_id=%s: %s",
+                message.chat.id,
+                response.data,
+            )
+            await message.reply(f"TTS failed: {response.data}")
+            await react(success=False, message=message)
+
+    except Exception as e:
+        logger.error("TTS error: %s", e, exc_info=True)
+        await message.reply(f"Error: {e}")
         await react(success=False, message=message)
 
 
