@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=1.26.0",
     "openai>=1.30.0",
     "Pillow>=10.3.0",
+    "prometheus-client>=0.23.1",
     "redis>=5.0.4",
     "tiktoken>=0.7.0",
 ]

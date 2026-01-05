@@ -19,8 +19,11 @@ from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from PIL import Image
 
+import time as time_module
+
 from chat_completions import AudioResponse, ImageResponse, TextResponse
 from config import Config
+import metrics
 from image_utils import create_mask_from_comparison, prepare_image_for_dalle
 from message_store import MessageStore, StoredChatMessage
 from states import EditPicStates
@@ -208,6 +211,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         message.chat.id,
         message.from_user.username,
     )
+    start_time = time_module.perf_counter()
     prompt = command.args
     logger.debug("DALL-E image generation requested, prompt=%r", prompt)
     await message.chat.do("upload_photo")
@@ -220,6 +224,8 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
             prompt,
             e,
         )
+        metrics.requests_total.labels(command='pic', status='error').inc()
+        metrics.errors_total.labels(error_type='bad_request').inc()
         messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
         messages_to_send.append(
             (
@@ -239,11 +245,15 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
         logger.info(
             "DALL-E image generated successfully for chat_id=%s", message.chat.id
         )
+        metrics.requests_total.labels(command='pic', status='success').inc()
+        metrics.images_generated.labels(model='dall-e-2').inc()
         await message.chat.do("upload_photo")
         image_from_url = types.URLInputFile(response.b64_or_url)
         caption = f"DALL-E 2 prompt: {prompt}"
         await message.answer_photo(image_from_url, caption=caption)
         await react(success=True, message=message)
+    finally:
+        metrics.request_duration.labels(command='pic').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
@@ -257,6 +267,7 @@ async def gimme_pic3(message: types.Message, command: types.CommandObject):
         message.chat.id,
         message.from_user.username,
     )
+    start_time = time_module.perf_counter()
     prompt = command.args
     logger.debug("DALL-E 3 image generation requested, prompt=%r", prompt)
     await message.chat.do("upload_photo")
@@ -269,6 +280,8 @@ async def gimme_pic3(message: types.Message, command: types.CommandObject):
             prompt,
             e,
         )
+        metrics.requests_total.labels(command='pic3', status='error').inc()
+        metrics.errors_total.labels(error_type='bad_request').inc()
         messages_to_send = [config.prompt_tuple_for_chat(message.chat.id)]
         messages_to_send.append(
             (
@@ -288,11 +301,15 @@ async def gimme_pic3(message: types.Message, command: types.CommandObject):
         logger.info(
             "DALL-E 3 image generated successfully for chat_id=%s", message.chat.id
         )
+        metrics.requests_total.labels(command='pic3', status='success').inc()
+        metrics.images_generated.labels(model='dall-e-3').inc()
         await message.chat.do("upload_photo")
         image_from_url = types.URLInputFile(response.b64_or_url)
         caption = f"DALL-E 3 prompt: {prompt}"
         await message.answer_photo(image_from_url, caption=caption)
         await react(success=True, message=message)
+    finally:
+        metrics.request_duration.labels(command='pic3').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
@@ -684,12 +701,14 @@ async def handle_voice_message(message: types.Message) -> None:
         message.from_user.username,
         message.voice.duration,
     )
+    start_time = time_module.perf_counter()
 
     if message.voice.duration > MAX_VOICE_DURATION_SECONDS:
         await message.reply(
             f"Voice message too long ({message.voice.duration}s). "
             f"Max duration: {MAX_VOICE_DURATION_SECONDS // 60} minutes."
         )
+        metrics.requests_total.labels(command='voice', status='rejected').inc()
         await react(success=False, message=message)
         return
 
@@ -709,6 +728,8 @@ async def handle_voice_message(message: types.Message) -> None:
                 message.chat.id,
                 len(transcription),
             )
+            metrics.requests_total.labels(command='voice', status='success').inc()
+            metrics.voice_duration_total.inc(message.voice.duration)
             await message.reply(f"<b>Transcription:</b>\n{transcription}")
             await react(success=True, message=message)
         else:
@@ -717,13 +738,18 @@ async def handle_voice_message(message: types.Message) -> None:
                 message.chat.id,
                 response.data,
             )
+            metrics.requests_total.labels(command='voice', status='error').inc()
             await message.reply(f"Transcription failed: {response.data}")
             await react(success=False, message=message)
 
     except Exception as e:
         logger.error("Voice transcription error: %s", e, exc_info=True)
+        metrics.requests_total.labels(command='voice', status='error').inc()
+        metrics.errors_total.labels(error_type='exception').inc()
         await message.reply(f"Error: {e}")
         await react(success=False, message=message)
+    finally:
+        metrics.request_duration.labels(command='voice').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
@@ -736,6 +762,7 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
         message.chat.id,
         message.from_user.username,
     )
+    start_time = time_module.perf_counter()
 
     text = command.args
     if not text:
@@ -743,6 +770,7 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
             "Please provide text to convert to speech.\n"
             "Example: <code>/tts Hello, how are you?</code>"
         )
+        metrics.requests_total.labels(command='tts', status='rejected').inc()
         await react(success=False, message=message)
         return
 
@@ -758,6 +786,7 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
                 message.chat.id,
                 len(audio_data),
             )
+            metrics.requests_total.labels(command='tts', status='success').inc()
             voice_file = types.BufferedInputFile(audio_data, filename="speech.ogg")
             await message.reply_voice(voice_file)
             await react(success=True, message=message)
@@ -767,13 +796,18 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
                 message.chat.id,
                 response.data,
             )
+            metrics.requests_total.labels(command='tts', status='error').inc()
             await message.reply(f"TTS failed: {response.data}")
             await react(success=False, message=message)
 
     except Exception as e:
         logger.error("TTS error: %s", e, exc_info=True)
+        metrics.requests_total.labels(command='tts', status='error').inc()
+        metrics.errors_total.labels(error_type='exception').inc()
         await message.reply(f"Error: {e}")
         await react(success=False, message=message)
+    finally:
+        metrics.request_duration.labels(command='tts').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
@@ -958,6 +992,7 @@ async def handle_text_message(message: types.Message):
         message.from_user.username,
         len(message.text or ""),
     )
+    start_time = time_module.perf_counter()
     chat_config = config[message.chat.id]
     save_messages = chat_config.save_messages
     context_enabled = chat_config.context_enabled
@@ -1062,22 +1097,22 @@ async def handle_text_message(message: types.Message):
             message.chat.id,
             len(llm_reply.text),
         )
+        metrics.requests_total.labels(command='chat', status='success').inc()
     else:
         logger.warning(
             "LLM response failed for chat_id=%s, error=%s",
             message.chat.id,
             llm_reply.text[:100],
         )
+        metrics.requests_total.labels(command='chat', status='error').inc()
 
     func = message.reply if llm_reply.success else message.answer
     await func(llm_reply.text)
 
     if save_messages:
-        # Save user message first
         user_msg = StoredChatMessage.from_tg_message(message)
         message_store.save(tag, user_msg)
 
-        # Then save bot response
         bot_msg = StoredChatMessage(
             chat_name=message.chat.full_name,
             from_username=config.me_strip_lower,
@@ -1090,6 +1125,7 @@ async def handle_text_message(message: types.Message):
             "Saved user and bot messages to Redis for chat_id=%s", message.chat.id
         )
 
+    metrics.request_duration.labels(command='chat').observe(time_module.perf_counter() - start_time)
     await react(llm_reply.success, message)
 
 
@@ -1100,6 +1136,9 @@ async def main() -> None:
         config.me,
     )
     logger.info("Configured chats: %d, git_sha=%s", len(config), config.git_sha)
+
+    metrics.start_metrics_server()
+    logger.info("Metrics server started on port %d", metrics.METRICS_PORT)
 
     # Setup Redis storage for FSM with 5-minute state TTL
     redis_url = os.getenv("REDIS_URL")
