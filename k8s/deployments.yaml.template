@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matvey
+  namespace: matvey-gang
+  labels:
+    app: matvey
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matvey
+  template:
+    metadata:
+      labels:
+        app: matvey
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+        - name: matvey
+          image: ghcr.io/shrimpsizemoose/matvey-3000:VERSION
+          ports:
+            - containerPort: 8000
+              name: metrics
+          env:
+            - name: BOT_CONFIG_TOML
+              value: "/config/matvey.toml"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: TELEGRAM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: TELEGRAM_API_TOKEN
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: OPENAI_API_KEY
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: ANTHROPIC_API_KEY
+            - name: YANDEXGPT_FOLDER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: YANDEXGPT_FOLDER_ID
+            - name: YANDEXGPT_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: YANDEXGPT_API_KEY
+            - name: KANDINSKI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: KANDINSKI_API_KEY
+            - name: KANDINSKI_API_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: KANDINSKI_API_SECRET
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: matvey-config

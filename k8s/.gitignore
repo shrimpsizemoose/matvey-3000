@@ -1,0 +1,4 @@
+*.toml
+secrets.yaml
+configmaps.yaml
+deployments.yaml
