@@ -753,6 +753,69 @@ async def handle_voice_message(message: types.Message) -> None:
 
 
 @router.message(
+    F.video_note,
+    config.filter_voice_enabled,
+)
+async def handle_video_note_message(message: types.Message) -> None:
+    """Handle circular video messages - extract and transcribe audio."""
+    logger.info(
+        "Video note received: chat_id=%s, user=%s, duration=%s",
+        message.chat.id,
+        message.from_user.username,
+        message.video_note.duration,
+    )
+    start_time = time_module.perf_counter()
+
+    if message.video_note.duration > MAX_VOICE_DURATION_SECONDS:
+        await message.reply(
+            f"Video note too long ({message.video_note.duration}s). "
+            f"Max duration: {MAX_VOICE_DURATION_SECONDS // 60} minutes."
+        )
+        metrics.requests_total.labels(command='video_note', status='rejected').inc()
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("typing")
+
+    try:
+        file = await bot.get_file(message.video_note.file_id)
+        file_bytes = await bot.download_file(file.file_path)
+        video_data = file_bytes.read()
+
+        response = await AudioResponse.transcribe(video_data, filename="video_note.mp4")
+
+        if response.success:
+            transcription = response.data
+            logger.info(
+                "Video note transcribed for chat_id=%s, length=%d",
+                message.chat.id,
+                len(transcription),
+            )
+            metrics.requests_total.labels(command='video_note', status='success').inc()
+            metrics.voice_duration_total.inc(message.video_note.duration)
+            await message.reply(f"<b>Transcription:</b>\n{transcription}")
+            await react(success=True, message=message)
+        else:
+            logger.warning(
+                "Video note transcription failed for chat_id=%s: %s",
+                message.chat.id,
+                response.data,
+            )
+            metrics.requests_total.labels(command='video_note', status='error').inc()
+            await message.reply(f"Transcription failed: {response.data}")
+            await react(success=False, message=message)
+
+    except Exception as e:
+        logger.error("Video note transcription error: %s", e, exc_info=True)
+        metrics.requests_total.labels(command='video_note', status='error').inc()
+        metrics.errors_total.labels(error_type='exception').inc()
+        await message.reply(f"Error: {e}")
+        await react(success=False, message=message)
+    finally:
+        metrics.request_duration.labels(command='video_note').observe(time_module.perf_counter() - start_time)
+
+
+@router.message(
     config.filter_voice_enabled,
     Command(commands=["tts"]),
 )
