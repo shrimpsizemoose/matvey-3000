@@ -42,6 +42,7 @@ This project works with python 3.11+.
 | `YANDEXGPT_API_KEY` | `AQiiii..........iiiiii-rzO` | yandex gpt api key |
 | `KANDINSKI_API_KEY` | `CD53.................0F49F` | kandinski api key |
 | `KANDINSKI_API_SECRET` | `4A470B............98942` | kandinski api secret |
+| `REPLICATE_API_TOKEN` | `r8_xxxxxxxxxx` | Replicate API token for photo editing |
 | `BOT_CONFIG_TOML` | `/etc/matvey.toml` | take matvey-template.toml as example |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis for message history and FSM state |
 | `FSM_REDIS_PREFIX` | `fsm:mybot` | optional prefix for FSM keys (default: `fsm:<bot_username>`) |
@@ -73,9 +74,13 @@ Don't know the group id? Launch the script, add the bot to the chat and issue a 
 | `/pic <prompt>` | Generate image with DALL-E 2 |
 | `/pic3 <prompt>` | Generate image with DALL-E 3 |
 | `/pik <prompt>` | Generate image with Kandinski |
-| `/edit_pic` | Multi-step image editing wizard (DALL-E 2 inpainting) |
+| `/edit <instruction>` | Edit photo with natural language (reply to photo) |
+| `/remove <object>` | Remove object from photo (reply to photo) |
+| `/replace <old> -> <new>` | Replace object in photo (reply to photo) |
+| `/remove_bg` | Remove background from photo (reply to photo) |
+| `/background <description>` | Replace background (reply to photo) |
 | `/reimagine <modification>` | Reimagine attached photo with GPT-4 Vision + DALL-E 3 |
-| `/tts <text>` | Convert text to speech (requires `voice_enabled`) |
+| `/tts [voice:] <text>` | Convert text to speech (requires `voice_enabled`) |
 | `/ru <text>` | Translate to Russian |
 | `/en <text>` | Translate to English |
 | `/mode_claude` | Switch to Anthropic Claude |
@@ -84,9 +89,8 @@ Don't know the group id? Launch the script, add the bot to the chat and issue a 
 | `/prompt [new_prompt]` | Show or set system prompt |
 | `/new_chat` | Clear conversation history |
 | `/blerb` | Show chat ID |
-| `/cancel` | Cancel current wizard |
 
-Voice messages are automatically transcribed when `voice_enabled` is set.
+Voice messages and video notes are automatically transcribed when `voice_enabled` is set.
 
 ## Per-chat configuration
 
@@ -102,6 +106,7 @@ context_enabled = true        # use conversation history
 max_context_messages = 10     # how many messages to include
 summary_enabled = false       # enable /sammari command
 voice_enabled = false         # enable voice transcription and /tts
+tts_voice = "alloy"           # default TTS voice (alloy, echo, fable, onyx, nova, shimmer)
 disabled_commands = ["/pik"]  # disable specific commands
 ```
 
