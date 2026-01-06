@@ -27,6 +27,7 @@ class ChatConfig:
     disabled_commands: list[str] | None = None
     context_enabled: bool = True
     max_context_messages: int = 10
+    tts_voice: str = 'alloy'
 
     @classmethod
     def just_no(cls, chat_id, provider, disabled_commands):
@@ -69,6 +70,8 @@ class Config:
     PROVIDER_OPENAI = 'openai'
     PROVIDER_ANTHROPIC = 'anthropic'
     PROVIDER_YANDEXGPT = 'yandexgpt'
+
+    TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 
     ALL_COMMANDS = [
         '/pic',
@@ -115,6 +118,7 @@ class Config:
                 disabled_commands=chat.get('disabled_commands', []),
                 context_enabled=chat.get('context_enabled', True),
                 max_context_messages=chat.get('max_context_messages', 10),
+                tts_voice=chat.get('tts_voice', 'alloy'),
             )
             for chat in config['chats']['allowed']
         }

@@ -815,6 +815,35 @@ async def handle_video_note_message(message: types.Message) -> None:
         metrics.request_duration.labels(command='video_note').observe(time_module.perf_counter() - start_time)
 
 
+def get_tts_voice_keyboard(current_voice: str, original_message_id: int) -> types.InlineKeyboardMarkup:
+    """Build inline keyboard with voice options, excluding current voice."""
+    builder = InlineKeyboardBuilder()
+    for voice in config.TTS_VOICES:
+        if voice == current_voice:
+            builder.button(text=f"✓ {voice}", callback_data="noop")
+        else:
+            builder.button(text=voice, callback_data=f"tts:{voice}:{original_message_id}")
+    builder.adjust(3)
+    return builder.as_markup()
+
+
+def parse_tts_voice_and_text(args: str, default_voice: str) -> tuple[str, str]:
+    """Parse voice prefix from TTS command args. Supports '/tts nova: text' or '/tts nova text'."""
+    if not args:
+        return default_voice, ""
+
+    parts = args.split(None, 1)
+    if not parts:
+        return default_voice, args
+
+    first_word = parts[0].rstrip(':').lower()
+    if first_word in config.TTS_VOICES:
+        text = parts[1] if len(parts) > 1 else ""
+        return first_word, text
+
+    return default_voice, args
+
+
 @router.message(
     config.filter_voice_enabled,
     Command(commands=["tts"]),
@@ -827,11 +856,16 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
     )
     start_time = time_module.perf_counter()
 
-    text = command.args
+    chat_config = config[message.chat.id]
+    voice, text = parse_tts_voice_and_text(command.args, chat_config.tts_voice)
+
     if not text:
+        voices_list = ", ".join(config.TTS_VOICES)
         await message.reply(
             "Please provide text to convert to speech.\n"
-            "Example: <code>/tts Hello, how are you?</code>"
+            f"Example: <code>/tts Hello, how are you?</code>\n"
+            f"Or with voice: <code>/tts nova: Hello!</code>\n"
+            f"Available voices: {voices_list}"
         )
         metrics.requests_total.labels(command='tts', status='rejected').inc()
         await react(success=False, message=message)
@@ -840,18 +874,29 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
     await message.chat.do("record_voice")
 
     try:
-        response = await AudioResponse.text_to_speech(text)
+        response = await AudioResponse.text_to_speech(text, voice=voice)
 
         if response.success:
             audio_data = response.data
             logger.info(
-                "TTS generated for chat_id=%s, audio_size=%d",
+                "TTS generated for chat_id=%s, voice=%s, audio_size=%d",
                 message.chat.id,
+                voice,
                 len(audio_data),
             )
             metrics.requests_total.labels(command='tts', status='success').inc()
+
+            message_store.store_tts_text(
+                bot_username=config.me_strip_lower,
+                chat_id=message.chat.id,
+                user_id=message.from_user.id,
+                message_id=message.message_id,
+                text=text,
+            )
+
             voice_file = types.BufferedInputFile(audio_data, filename="speech.ogg")
-            await message.reply_voice(voice_file)
+            keyboard = get_tts_voice_keyboard(voice, message.message_id)
+            await message.reply_voice(voice_file, reply_markup=keyboard)
             await react(success=True, message=message)
         else:
             logger.warning(
@@ -871,6 +916,41 @@ async def handle_tts_command(message: types.Message, command: types.CommandObjec
         await react(success=False, message=message)
     finally:
         metrics.request_duration.labels(command='tts').observe(time_module.perf_counter() - start_time)
+
+
+@router.callback_query(F.data.startswith("tts:"))
+async def handle_tts_voice_callback(callback: types.CallbackQuery) -> None:
+    """Regenerate TTS with different voice."""
+    _, voice, original_msg_id = callback.data.split(":")
+    original_msg_id = int(original_msg_id)
+
+    text = message_store.get_tts_text(
+        bot_username=config.me_strip_lower,
+        chat_id=callback.message.chat.id,
+        user_id=callback.from_user.id,
+        message_id=original_msg_id,
+    )
+
+    if not text:
+        await callback.answer("Text expired, please send /tts again", show_alert=True)
+        return
+
+    await callback.answer(f"Generating with {voice}...")
+    await callback.message.chat.do("record_voice")
+
+    try:
+        response = await AudioResponse.text_to_speech(text, voice=voice)
+
+        if response.success:
+            voice_file = types.BufferedInputFile(response.data, filename="speech.ogg")
+            keyboard = get_tts_voice_keyboard(voice, original_msg_id)
+            await callback.message.answer_voice(voice_file, reply_markup=keyboard)
+        else:
+            await callback.message.answer(f"TTS failed: {response.data}")
+
+    except Exception as e:
+        logger.error("TTS callback error: %s", e, exc_info=True)
+        await callback.message.answer(f"Error: {e}")
 
 
 @router.message(

@@ -281,3 +281,32 @@ class MessageStore:
             count = self.redis_conn.delete(*keys)
             logger.debug('Temp images cleared: pattern=%s, count=%d', pattern, count)
         return count
+
+    def store_tts_text(
+        self,
+        bot_username: str,
+        chat_id: int,
+        user_id: int,
+        message_id: int,
+        text: str,
+        ttl_seconds: int = 300,
+    ) -> None:
+        key = f'matvey-3000:tts:{bot_username}:{chat_id}:{user_id}:{message_id}'
+        self.redis_conn.setex(key, ttl_seconds, text)
+        logger.debug('TTS text stored: key=%s, text_len=%d, ttl=%d', key, len(text), ttl_seconds)
+
+    def get_tts_text(
+        self,
+        bot_username: str,
+        chat_id: int,
+        user_id: int,
+        message_id: int,
+    ) -> str | None:
+        key = f'matvey-3000:tts:{bot_username}:{chat_id}:{user_id}:{message_id}'
+        data = self.redis_conn.get(key)
+        if data:
+            text = data.decode('utf-8') if isinstance(data, bytes) else data
+            logger.debug('TTS text retrieved: key=%s, text_len=%d', key, len(text))
+            return text
+        logger.debug('TTS text not found: key=%s', key)
+        return None
