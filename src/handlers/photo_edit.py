@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 
 from bot import config, get_replied_photo_bytes, react
 from providers import ReplicateEdit
@@ -15,7 +15,7 @@ router = Router()
     config.filter_command_not_disabled_for_chat,
     Command(commands=["edit"]),
 )
-async def handle_edit_command(message: types.Message, command: types.CommandObject) -> None:
+async def handle_edit_command(message: types.Message, command: CommandObject) -> None:
     logger.info("Command /edit: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
     image_bytes = await get_replied_photo_bytes(message)
@@ -52,7 +52,7 @@ async def handle_edit_command(message: types.Message, command: types.CommandObje
     config.filter_command_not_disabled_for_chat,
     Command(commands=["remove"]),
 )
-async def handle_remove_command(message: types.Message, command: types.CommandObject) -> None:
+async def handle_remove_command(message: types.Message, command: CommandObject) -> None:
     logger.info("Command /remove: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
     image_bytes = await get_replied_photo_bytes(message)
@@ -89,7 +89,7 @@ async def handle_remove_command(message: types.Message, command: types.CommandOb
     config.filter_command_not_disabled_for_chat,
     Command(commands=["replace"]),
 )
-async def handle_replace_command(message: types.Message, command: types.CommandObject) -> None:
+async def handle_replace_command(message: types.Message, command: CommandObject) -> None:
     logger.info("Command /replace: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
     image_bytes = await get_replied_photo_bytes(message)
@@ -171,7 +171,7 @@ async def handle_remove_bg_command(message: types.Message) -> None:
     config.filter_command_not_disabled_for_chat,
     Command(commands=["background", "bg"]),
 )
-async def handle_background_command(message: types.Message, command: types.CommandObject) -> None:
+async def handle_background_command(message: types.Message, command: CommandObject) -> None:
     logger.info("Command /background: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
     image_bytes = await get_replied_photo_bytes(message)

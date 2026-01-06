@@ -2,7 +2,7 @@ import logging
 import time as time_module
 
 from aiogram import F, Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot import bot, config, message_store, react
@@ -170,7 +170,7 @@ def parse_tts_voice_and_text(args: str, default_voice: str) -> tuple[str, str]:
     config.filter_voice_enabled,
     Command(commands=["tts"]),
 )
-async def handle_tts_command(message: types.Message, command: types.CommandObject) -> None:
+async def handle_tts_command(message: types.Message, command: CommandObject) -> None:
     logger.info(
         "Command /tts received from chat_id=%s user=%s",
         message.chat.id,

@@ -4,7 +4,7 @@ import time as time_module
 
 import openai
 from aiogram import F, Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 
 from bot import bot, config, react
 import metrics
@@ -19,7 +19,7 @@ router = Router()
     config.filter_chat_allowed,
     Command(commands=["pic"]),
 )
-async def gimme_pic(message: types.Message, command: types.CommandObject):
+async def gimme_pic(message: types.Message, command: CommandObject):
     logger.info(
         "Command /pic received from chat_id=%s user=%s",
         message.chat.id,
@@ -75,7 +75,7 @@ async def gimme_pic(message: types.Message, command: types.CommandObject):
     config.filter_chat_allowed,
     Command(commands=["pic3"]),
 )
-async def gimme_pic3(message: types.Message, command: types.CommandObject):
+async def gimme_pic3(message: types.Message, command: CommandObject):
     logger.info(
         "Command /pic3 received from chat_id=%s user=%s",
         message.chat.id,
@@ -131,7 +131,7 @@ async def gimme_pic3(message: types.Message, command: types.CommandObject):
     config.filter_command_not_disabled_for_chat,
     Command(commands=["pik"]),
 )
-async def gimme_pikk(message: types.Message, command: types.CommandObject):
+async def gimme_pikk(message: types.Message, command: CommandObject):
     logger.info(
         "Command /pik received from chat_id=%s user=%s",
         message.chat.id,
@@ -219,7 +219,7 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
 )
 async def handle_reimagine(
     message: types.Message,
-    command: types.CommandObject,
+    command: CommandObject,
 ) -> None:
     """Vision + DALL-E 3 reimagine flow."""
     logger.info(

@@ -4,7 +4,7 @@ import time
 import time as time_module
 
 from aiogram import F, Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 
 from bot import bot, config, extract_message_chain, message_store, react
 import metrics
@@ -20,7 +20,7 @@ router = Router()
     config.filter_command_not_disabled_for_chat,
     Command(commands=["ru", "en"]),
 )
-async def translate_ruen(message: types.Message, command: types.CommandObject):
+async def translate_ruen(message: types.Message, command: CommandObject):
     logger.info(
         "Command /%s received from chat_id=%s user=%s",
         command.command,

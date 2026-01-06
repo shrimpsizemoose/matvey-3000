@@ -3,7 +3,7 @@ import logging
 
 import tiktoken
 from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 
 from bot import config, message_store, react
 from providers import TextResponse
@@ -16,7 +16,7 @@ router = Router()
     config.filter_summary_enabled,
     Command(commands=["samari", "sammari", "sum", "sosum"]),
 )
-async def handle_summary_command(message: types.Message, command: types.CommandObject):
+async def handle_summary_command(message: types.Message, command: CommandObject):
     logger.info(
         "Command /%s (summary) received from chat_id=%s user=%s",
         command.command,

@@ -1,7 +1,7 @@
 import logging
 
 from aiogram import Router, html, types
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 
 from bot import config, message_store, react
 
@@ -80,7 +80,7 @@ async def switch_to_yandexgpt(message: types.Message):
 
 
 @router.message(config.filter_chat_allowed, Command(commands=["prompt"]))
-async def dump_set_prompt(message: types.Message, command: types.CommandObject):
+async def dump_set_prompt(message: types.Message, command: CommandObject):
     logger.info(
         "Command /prompt received from chat_id=%s user=%s",
         message.chat.id,
@@ -137,7 +137,7 @@ async def handle_new_chat(message: types.Message):
 
 
 @router.message(config.filter_is_admin, Command(commands=["admin_stats"]))
-async def handle_stats_command(message: types.Message, command: types.CommandObject):
+async def handle_stats_command(message: types.Message, command: CommandObject):
     logger.info(
         "Command /admin_stats received from chat_id=%s user=%s",
         message.chat.id,
