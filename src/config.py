@@ -73,11 +73,21 @@ class Config:
 
     TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 
+    REPLICATE_MODEL_EDIT = 'timbrooks/instruct-pix2pix:30c1d0b916a6f8efce20493f5d61ee27491ab2a60437c13c588468b9810ec23f'
+    REPLICATE_MODEL_REMOVE_BG = 'lucataco/remove-bg:95fcc2a26d3899cd6c2691c900465aaeff466285a65c14638cc5f36f34befaf1'
+    REPLICATE_MODEL_REMOVE_OBJ = 'wolverinn/instructir:6a0852b6c8030645a0dba0f7a5dbb779c6ca4f35de40437e6094a7ba2a6739d8'
+    REPLICATE_MODEL_SDXL = 'stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b'
+
     ALL_COMMANDS = [
         '/pic',
         '/pic3',
         '/pik',
-        '/edit_pic',
+        '/edit',
+        '/remove',
+        '/replace',
+        '/remove_bg',
+        '/background',
+        '/bg',
         '/reimagine',
         '/tts',
         '/cancel',

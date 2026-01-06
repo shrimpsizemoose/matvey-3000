@@ -1,13 +1,16 @@
 import asyncio
+import base64
 import json
 import logging
 import os
 import textwrap
 from dataclasses import dataclass
+from enum import Enum
 
 import anthropic
 import httpx
 import openai
+import replicate
 
 
 logger = logging.getLogger(__name__)
@@ -583,3 +586,113 @@ class ImageResponse:
             b64_or_url=data['images'][0],
             censored=data['censored'],
         )
+
+
+@dataclass(frozen=True)
+class ReplicateEdit:
+    success: bool
+    image_url: str | None
+    error: str | None = None
+
+    # Import here to avoid circular import at module level
+    @staticmethod
+    def _get_config():
+        from config import Config
+        return Config
+
+    @classmethod
+    def _image_to_data_uri(cls, image_bytes: bytes) -> str:
+        b64 = base64.b64encode(image_bytes).decode('utf-8')
+        return f'data:image/png;base64,{b64}'
+
+    @classmethod
+    async def edit(cls, image_bytes: bytes, instruction: str) -> 'ReplicateEdit':
+        """Edit image using InstructPix2Pix - natural language instructions."""
+        logger.info('Replicate edit: instruction=%r, image_size=%d', instruction[:50], len(image_bytes))
+        try:
+            output = await replicate.async_run(
+                cls._get_config().REPLICATE_MODEL_EDIT,
+                input={
+                    'image': cls._image_to_data_uri(image_bytes),
+                    'prompt': instruction,
+                    'num_inference_steps': 50,
+                    'image_cfg_scale': 1.5,
+                    'guidance_scale': 7.5,
+                },
+            )
+            image_url = output[0] if isinstance(output, list) else str(output)
+            logger.info('Replicate edit successful: url=%s', image_url[:80])
+            return cls(success=True, image_url=image_url)
+        except Exception as e:
+            logger.error('Replicate edit error: %s', e, exc_info=True)
+            return cls(success=False, image_url=None, error=str(e))
+
+    @classmethod
+    async def remove_background(cls, image_bytes: bytes) -> 'ReplicateEdit':
+        """Remove background from image."""
+        logger.info('Replicate remove_bg: image_size=%d', len(image_bytes))
+        try:
+            output = await replicate.async_run(
+                cls._get_config().REPLICATE_MODEL_REMOVE_BG,
+                input={'image': cls._image_to_data_uri(image_bytes)},
+            )
+            image_url = str(output)
+            logger.info('Replicate remove_bg successful: url=%s', image_url[:80])
+            return cls(success=True, image_url=image_url)
+        except Exception as e:
+            logger.error('Replicate remove_bg error: %s', e, exc_info=True)
+            return cls(success=False, image_url=None, error=str(e))
+
+    @classmethod
+    async def replace_background(cls, image_bytes: bytes, new_background: str) -> 'ReplicateEdit':
+        """Remove background and generate new one with SDXL."""
+        logger.info('Replicate replace_bg: prompt=%r, image_size=%d', new_background[:50], len(image_bytes))
+        Config = cls._get_config()
+        try:
+            # Step 1: Remove background
+            rmbg_output = await replicate.async_run(
+                Config.REPLICATE_MODEL_REMOVE_BG,
+                input={'image': cls._image_to_data_uri(image_bytes)},
+            )
+
+            # Step 2: Generate new background and composite
+            output = await replicate.async_run(
+                Config.REPLICATE_MODEL_SDXL,
+                input={
+                    'prompt': f'{new_background}, high quality, detailed background',
+                    'image': str(rmbg_output),
+                    'num_inference_steps': 25,
+                },
+            )
+            image_url = output[0] if isinstance(output, list) else str(output)
+            logger.info('Replicate replace_bg successful')
+            return cls(success=True, image_url=image_url)
+        except Exception as e:
+            logger.error('Replicate replace_bg error: %s', e, exc_info=True)
+            return cls(success=False, image_url=None, error=str(e))
+
+    @classmethod
+    async def remove_object(cls, image_bytes: bytes, object_description: str) -> 'ReplicateEdit':
+        """Remove object using instruction-based editing."""
+        logger.info('Replicate remove_object: target=%r, image_size=%d', object_description, len(image_bytes))
+        try:
+            output = await replicate.async_run(
+                cls._get_config().REPLICATE_MODEL_REMOVE_OBJ,
+                input={
+                    'image': cls._image_to_data_uri(image_bytes),
+                    'prompt': f'remove {object_description}',
+                },
+            )
+            image_url = output[0] if isinstance(output, list) else str(output)
+            logger.info('Replicate remove_object successful')
+            return cls(success=True, image_url=image_url)
+        except Exception as e:
+            logger.error('Replicate remove_object error: %s', e, exc_info=True)
+            return cls(success=False, image_url=None, error=str(e))
+
+    @classmethod
+    async def replace_object(cls, image_bytes: bytes, target: str, replacement: str) -> 'ReplicateEdit':
+        """Replace specific object with another using instruction-based editing."""
+        logger.info('Replicate replace_object: %r -> %r', target, replacement)
+        instruction = f'replace {target} with {replacement}'
+        return await cls.edit(image_bytes, instruction)

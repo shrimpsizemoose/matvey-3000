@@ -14,6 +14,7 @@ dependencies = [
     "Pillow>=10.3.0",
     "prometheus-client>=0.23.1",
     "redis>=5.0.4",
+    "replicate>=0.25.0",
     "tiktoken>=0.7.0",
 ]
 

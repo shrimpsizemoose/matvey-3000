@@ -12,21 +12,17 @@ import openai
 import tiktoken
 from aiogram import Bot, Dispatcher, F, Router, html, types
 from aiogram.client.default import DefaultBotProperties
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
 from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from PIL import Image
 
 import time as time_module
 
-from chat_completions import AudioResponse, ImageResponse, TextResponse
+from chat_completions import AudioResponse, ImageResponse, ReplicateEdit, TextResponse
 from config import Config
 import metrics
-from image_utils import create_mask_from_comparison, prepare_image_for_dalle
 from message_store import MessageStore, StoredChatMessage
-from states import EditPicStates
 
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
@@ -397,232 +393,6 @@ async def gimme_pikk(message: types.Message, command: types.CommandObject):
             await react(success=True, message=message)
 
 
-def get_cancel_keyboard() -> types.InlineKeyboardMarkup:
-    """Create inline keyboard with cancel button."""
-    builder = InlineKeyboardBuilder()
-    builder.button(text="Cancel", callback_data="cancel_edit_wizard")
-    return builder.as_markup()
-
-
-# ============ /edit_pic Wizard Handlers ============
-
-
-@router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
-    Command(commands=["edit_pic"]),
-    ~F.photo,
-)
-async def start_edit_pic_wizard(
-    message: types.Message,
-    state: FSMContext,
-) -> None:
-    """Step 1: User sends /edit_pic command. Start wizard."""
-    logger.info(
-        "Edit pic wizard started: chat_id=%s, user=%s",
-        message.chat.id,
-        message.from_user.username,
-    )
-
-    await state.set_state(EditPicStates.waiting_for_original)
-
-    await message.answer(
-        "Step 1/3: Send me the <b>original image</b> you want to edit.",
-        reply_markup=get_cancel_keyboard(),
-    )
-
-
-@router.message(
-    StateFilter(EditPicStates.waiting_for_original),
-    F.photo,
-)
-async def receive_original_image(
-    message: types.Message,
-    state: FSMContext,
-) -> None:
-    """Step 2: User sends original photo. Store it and ask for marked version."""
-    logger.info(
-        "Original image received: chat_id=%s, user=%s",
-        message.chat.id,
-        message.from_user.username,
-    )
-
-    photo = message.photo[-1]
-    file = await bot.get_file(photo.file_id)
-    file_bytes = await bot.download_file(file.file_path)
-
-    prepared = prepare_image_for_dalle(file_bytes.read())
-
-    message_store.store_temp_image(
-        chat_id=message.chat.id,
-        user_id=message.from_user.id,
-        image_key="original",
-        image_bytes=prepared,
-        ttl_seconds=300,
-    )
-
-    await state.set_state(EditPicStates.waiting_for_marked)
-
-    await message.answer(
-        "Step 2/3: Now <b>draw over the areas you want to edit</b> "
-        "(use any bright color like red, green, or yellow) and send the marked image.\n\n"
-        "Tip: Use a photo editor or Telegram's built-in drawing tool.",
-        reply_markup=get_cancel_keyboard(),
-    )
-
-
-@router.message(
-    StateFilter(EditPicStates.waiting_for_marked),
-    F.photo,
-)
-async def receive_marked_image(
-    message: types.Message,
-    state: FSMContext,
-) -> None:
-    """Step 3: User sends marked photo. Store it and ask for prompt."""
-    logger.info(
-        "Marked image received: chat_id=%s, user=%s",
-        message.chat.id,
-        message.from_user.username,
-    )
-
-    photo = message.photo[-1]
-    file = await bot.get_file(photo.file_id)
-    file_bytes = await bot.download_file(file.file_path)
-
-    prepared = prepare_image_for_dalle(file_bytes.read())
-
-    message_store.store_temp_image(
-        chat_id=message.chat.id,
-        user_id=message.from_user.id,
-        image_key="marked",
-        image_bytes=prepared,
-        ttl_seconds=300,
-    )
-
-    await state.set_state(EditPicStates.waiting_for_prompt)
-
-    await message.answer(
-        "Step 3/3: What should appear in the marked areas?\n"
-        'Send a text description (e.g., "a red rose", "clear blue sky", "remove the object").',
-        reply_markup=get_cancel_keyboard(),
-    )
-
-
-@router.message(
-    StateFilter(EditPicStates.waiting_for_prompt),
-    F.text,
-    ~F.text.startswith("/"),
-)
-async def receive_edit_prompt(
-    message: types.Message,
-    state: FSMContext,
-) -> None:
-    """Step 4: User sends prompt. Create mask, call DALL-E 2 edit, return result."""
-    logger.info(
-        "Edit prompt received: chat_id=%s, user=%s, prompt=%r",
-        message.chat.id,
-        message.from_user.username,
-        message.text[:50],
-    )
-
-    prompt = message.text
-
-    await message.chat.do("upload_photo")
-    progress_msg = await message.answer("Processing your edit request...")
-
-    try:
-        original = message_store.get_temp_image(
-            message.chat.id, message.from_user.id, "original"
-        )
-        marked = message_store.get_temp_image(
-            message.chat.id, message.from_user.id, "marked"
-        )
-
-        if not original or not marked:
-            await progress_msg.edit_text(
-                "Протухла сессия. Начни снова с /edit_pic"  # noqa: RUF001
-            )
-            await state.clear()
-            return
-
-        await progress_msg.edit_text("Creating mask from your markings...")
-        try:
-            mask = create_mask_from_comparison(original, marked)
-        except ValueError as e:
-            await progress_msg.edit_text(str(e))
-            await state.clear()
-            message_store.clear_temp_images(message.chat.id, message.from_user.id)
-            await react(success=False, message=message)
-            return
-
-        await progress_msg.edit_text("Generating edited image with DALL-E 2...")
-        response = await ImageResponse.edit_with_mask(original, mask, prompt)
-
-        await state.clear()
-        message_store.clear_temp_images(message.chat.id, message.from_user.id)
-        await progress_msg.delete()
-
-        if response.success:
-            image_from_url = types.URLInputFile(response.b64_or_url)
-            await message.answer_photo(
-                image_from_url,
-                caption=f"DALL-E 2 edit: {prompt}",
-            )
-            await react(success=True, message=message)
-        else:
-            await message.answer(response.b64_or_url)
-            await react(success=False, message=message)
-
-    except Exception as e:
-        logger.error("Edit pic wizard error: %s", e, exc_info=True)
-        await state.clear()
-        message_store.clear_temp_images(message.chat.id, message.from_user.id)
-        await progress_msg.edit_text(f"Error: {e}")
-        await react(success=False, message=message)
-
-
-@router.message(
-    Command(commands=["cancel"]),
-    StateFilter(EditPicStates),
-)
-async def cancel_wizard(
-    message: types.Message,
-    state: FSMContext,
-) -> None:
-    """Cancel the wizard at any step."""
-    logger.info(
-        "Edit pic wizard cancelled: chat_id=%s, user=%s",
-        message.chat.id,
-        message.from_user.username,
-    )
-
-    await state.clear()
-    message_store.clear_temp_images(message.chat.id, message.from_user.id)
-
-    await message.answer("Edit cancelled.")
-    await react(success=True, message=message)
-
-
-@router.callback_query(F.data == "cancel_edit_wizard")
-async def cancel_wizard_callback(
-    callback: types.CallbackQuery,
-    state: FSMContext,
-) -> None:
-    """Cancel wizard via inline button."""
-    logger.info(
-        "Edit pic wizard cancelled via button: chat_id=%s, user=%s",
-        callback.message.chat.id,
-        callback.from_user.username,
-    )
-
-    await state.clear()
-    message_store.clear_temp_images(callback.message.chat.id, callback.from_user.id)
-
-    await callback.message.edit_text("Edit cancelled.")
-    await callback.answer()
-
-
 # ============ /reimagine Handler ============
 
 
@@ -681,6 +451,222 @@ async def handle_reimagine(
     except Exception as e:
         logger.error("Reimagine error: %s", e, exc_info=True)
         await progress_msg.edit_text(f"Error: {e}")
+        await react(success=False, message=message)
+
+
+# ============ Replicate Photo Edit Handlers ============
+
+
+async def get_replied_photo_bytes(message: types.Message) -> bytes | None:
+    """Extract photo bytes from replied-to message."""
+    reply = message.reply_to_message
+    if not reply or not reply.photo:
+        return None
+    photo = reply.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_bytes = await bot.download_file(file.file_path)
+    return file_bytes.read()
+
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=["edit"]),
+)
+async def handle_edit_command(message: types.Message, command: types.CommandObject) -> None:
+    """Edit photo with natural language instruction. Reply to a photo with /edit <instruction>."""
+    logger.info("Command /edit: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
+
+    image_bytes = await get_replied_photo_bytes(message)
+    if not image_bytes:
+        await message.reply(
+            "Reply to a photo with this command.\n"
+            "Example: <code>/edit make it look like a watercolor painting</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    instruction = command.args
+    if not instruction:
+        await message.reply("Provide an instruction.\nExample: <code>/edit add sunglasses</code>")
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("upload_photo")
+    progress_msg = await message.answer("Editing with Replicate...")
+
+    result = await ReplicateEdit.edit(image_bytes, instruction)
+
+    await progress_msg.delete()
+    if result.success:
+        await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Edit: {instruction}")
+        await react(success=True, message=message)
+    else:
+        await message.answer(f"Edit failed: {result.error}")
+        await react(success=False, message=message)
+
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=["remove"]),
+)
+async def handle_remove_command(message: types.Message, command: types.CommandObject) -> None:
+    """Remove object from photo. Reply to a photo with /remove <object>."""
+    logger.info("Command /remove: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
+
+    image_bytes = await get_replied_photo_bytes(message)
+    if not image_bytes:
+        await message.reply(
+            "Reply to a photo with this command.\n"
+            "Example: <code>/remove the person in background</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    target = command.args
+    if not target:
+        await message.reply("What should I remove?\nExample: <code>/remove the watermark</code>")
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("upload_photo")
+    progress_msg = await message.answer("Removing object...")
+
+    result = await ReplicateEdit.remove_object(image_bytes, target)
+
+    await progress_msg.delete()
+    if result.success:
+        await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Removed: {target}")
+        await react(success=True, message=message)
+    else:
+        await message.answer(f"Remove failed: {result.error}")
+        await react(success=False, message=message)
+
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=["replace"]),
+)
+async def handle_replace_command(message: types.Message, command: types.CommandObject) -> None:
+    """Replace object in photo. Reply to a photo with /replace <old> -> <new>."""
+    logger.info("Command /replace: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
+
+    image_bytes = await get_replied_photo_bytes(message)
+    if not image_bytes:
+        await message.reply(
+            "Reply to a photo with this command.\n"
+            "Example: <code>/replace the car -> a red sports car</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    args = command.args or ""
+    # Parse "old -> new" or "old → new" format
+    for separator in [" -> ", " → ", "->", "→"]:
+        if separator in args:
+            parts = args.split(separator, 1)
+            target, replacement = parts[0].strip(), parts[1].strip()
+            break
+    else:
+        await message.reply(
+            "Use format: <code>/replace old -> new</code>\n"
+            "Example: <code>/replace the sky -> a sunset sky</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    if not target or not replacement:
+        await message.reply("Both target and replacement are required.")
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("upload_photo")
+    progress_msg = await message.answer(f"Replacing {target}...")
+
+    result = await ReplicateEdit.replace_object(image_bytes, target, replacement)
+
+    await progress_msg.delete()
+    if result.success:
+        await message.answer_photo(
+            types.URLInputFile(result.image_url),
+            caption=f"Replaced: {target} → {replacement}",
+        )
+        await react(success=True, message=message)
+    else:
+        await message.answer(f"Replace failed: {result.error}")
+        await react(success=False, message=message)
+
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=["remove_bg"]),
+)
+async def handle_remove_bg_command(message: types.Message) -> None:
+    """Remove background from photo. Reply to a photo with /remove_bg."""
+    logger.info("Command /remove_bg: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
+
+    image_bytes = await get_replied_photo_bytes(message)
+    if not image_bytes:
+        await message.reply("Reply to a photo with this command.")
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("upload_photo")
+    progress_msg = await message.answer("Removing background...")
+
+    result = await ReplicateEdit.remove_background(image_bytes)
+
+    await progress_msg.delete()
+    if result.success:
+        await message.answer_photo(types.URLInputFile(result.image_url), caption="Background removed")
+        await react(success=True, message=message)
+    else:
+        await message.answer(f"Remove background failed: {result.error}")
+        await react(success=False, message=message)
+
+
+@router.message(
+    config.filter_chat_allowed,
+    config.filter_command_not_disabled_for_chat,
+    Command(commands=["background", "bg"]),
+)
+async def handle_background_command(message: types.Message, command: types.CommandObject) -> None:
+    """Replace background. Reply to a photo with /background <new background description>."""
+    logger.info("Command /background: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
+
+    image_bytes = await get_replied_photo_bytes(message)
+    if not image_bytes:
+        await message.reply(
+            "Reply to a photo with this command.\n"
+            "Example: <code>/bg sunset beach</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    new_bg = command.args
+    if not new_bg:
+        await message.reply(
+            "Describe the new background.\n"
+            "Example: <code>/bg a cozy coffee shop</code>\n"
+            "To just remove background, use <code>/remove_bg</code>"
+        )
+        await react(success=False, message=message)
+        return
+
+    await message.chat.do("upload_photo")
+    progress_msg = await message.answer("Replacing background...")
+
+    result = await ReplicateEdit.replace_background(image_bytes, new_bg)
+
+    await progress_msg.delete()
+    if result.success:
+        await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Background: {new_bg}")
+        await react(success=True, message=message)
+    else:
+        await message.answer(f"Background replace failed: {result.error}")
         await react(success=False, message=message)
 
 
