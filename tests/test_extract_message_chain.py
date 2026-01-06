@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from aiogram import types
-from bot_handler import extract_message_chain
+from bot import extract_message_chain
 
 
 @pytest.fixture()
