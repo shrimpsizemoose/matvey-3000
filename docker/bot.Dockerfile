@@ -47,4 +47,4 @@ USER matvey
 # Add venv to path
 ENV PATH="/bot/.venv/bin:$PATH"
 
-CMD ["python", "src/bot_handler.py"]
+CMD ["python", "src/bot.py"]
