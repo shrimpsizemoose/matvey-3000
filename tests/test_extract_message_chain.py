@@ -1,10 +1,16 @@
-import pytest
+import os
 import sys
 from pathlib import Path
+
+# Set dummy env vars before importing bot (creates Bot at import time)
+os.environ.setdefault('TELEGRAM_API_TOKEN', '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11')
+os.environ.setdefault('BOT_CONFIG_TOML', str(Path(__file__).parent.parent / 'matvey-template.toml'))
+os.environ.setdefault('REDIS_URL', 'redis://localhost:6379')
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
+import pytest
 from aiogram import types
 from bot import extract_message_chain
 
