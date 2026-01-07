@@ -7,6 +7,12 @@ metadata:
     app: matvey
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  minReadySeconds: 10
   selector:
     matchLabels:
       app: matvey
@@ -64,6 +70,29 @@ spec:
                 secretKeyRef:
                   name: matvey-secrets
                   key: KANDINSKI_API_SECRET
+            - name: REPLICATE_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: matvey-secrets
+                  key: REPLICATE_API_TOKEN
+          startupProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 3
           resources:
             requests:
               memory: "128Mi"
