@@ -182,7 +182,8 @@ class Config:
     async def filter_chat_allowed(self, message) -> bool:
         allowed = message.chat.id in self.allowed_chat_id
         if not allowed:
-            logger.debug('Chat not allowed: chat_id=%s', message.chat.id)
+            chat_name = message.chat.title or message.chat.full_name or message.chat.username
+            logger.debug('Chat not allowed: chat_id=%s, chat_name=%r', message.chat.id, chat_name)
         return allowed
 
     async def filter_command_not_disabled_for_chat(self, message) -> bool:
@@ -206,7 +207,8 @@ class Config:
 
     async def filter_is_admin(self, message) -> bool:
         is_admin = self[message.chat.id].is_admin
-        logger.debug('Admin check for chat_id=%s: is_admin=%s', message.chat.id, is_admin)
+        chat_name = message.chat.title or message.chat.full_name or message.chat.username
+        logger.debug('Admin check for chat_id=%s (%s): is_admin=%s', message.chat.id, chat_name, is_admin)
         return is_admin
 
     async def filter_summary_enabled(self, message) -> bool:
