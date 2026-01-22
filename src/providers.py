@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 anthro_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+
+# Limit concurrent transcription requests to avoid rate limits and resource contention
+TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(3)
+
 yagpt_folder_id = os.getenv('YANDEXGPT_FOLDER_ID', default='NoYaFolder')
 yagpt_api_key = os.getenv('YANDEXGPT_API_KEY', default='NoYaKey')
 kandinski_api_key = os.getenv('KANDINSKI_API_KEY', default='KandiKeyOopsie')
@@ -222,7 +226,7 @@ class AudioResponse:
         cls,
         audio_bytes: bytes,
         filename: str = 'audio.ogg',
-        speedup: float = 2.0,
+        speedup: float | None = None,
     ):
         logger.info('Audio transcription requested: size=%d bytes, filename=%s',
                     len(audio_bytes), filename)
@@ -230,25 +234,29 @@ class AudioResponse:
         if speedup and speedup > 1.0:
             audio_bytes = await speedup_audio(audio_bytes, speedup)
 
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
-        try:
-            response = await client.audio.transcriptions.create(
-                model='whisper-1',
-                file=(filename, audio_bytes),
-            )
-            text = response.text
-            logger.info('Audio transcription successful: length=%d chars', len(text))
-            return cls(success=True, data=text)
-        except openai.BadRequestError as e:
-            logger.warning('Audio transcription BadRequestError: %s', e)
-            return cls(success=False, data=f'Не удалось распознать аудио: {e}')
-        except openai.RateLimitError as e:
-            logger.warning('Audio transcription RateLimitError: %s', e)
-            return cls(success=False, data=f'Рейт-лимит превышен: {e}')
-        except Exception as e:
-            logger.error('Audio transcription error: %s', e, exc_info=True)
-            return cls(success=False, data=f'Ошибка транскрипции: {e}')
+        async with TRANSCRIPTION_SEMAPHORE:
+            for attempt in range(3):
+                try:
+                    response = await openai_client.audio.transcriptions.create(
+                        model='whisper-1',
+                        file=(filename, audio_bytes),
+                    )
+                    text = response.text
+                    logger.info('Audio transcription successful: length=%d chars', len(text))
+                    return cls(success=True, data=text)
+                except openai.RateLimitError as e:
+                    if attempt == 2:
+                        logger.warning('Audio transcription RateLimitError after retries: %s', e)
+                        return cls(success=False, data=f'Рейт-лимит превышен: {e}')
+                    backoff = 2 ** attempt  # 1s, 2s, 4s
+                    logger.info('Rate limited, retrying in %ds (attempt %d/3)', backoff, attempt + 1)
+                    await asyncio.sleep(backoff)
+                except openai.BadRequestError as e:
+                    logger.warning('Audio transcription BadRequestError: %s', e)
+                    return cls(success=False, data=f'Не удалось распознать аудио: {e}')
+                except Exception as e:
+                    logger.error('Audio transcription error: %s', e, exc_info=True)
+                    return cls(success=False, data=f'Ошибка транскрипции: {e}')
 
     @classmethod
     async def text_to_speech(
