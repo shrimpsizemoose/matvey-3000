@@ -53,7 +53,7 @@ See [.envrc_template](./.envrc_template) for example [diren](https://direnv.net/
 ### 2. Run the script
 
 ```
-make run
+just run
 ```
 
 Or directly with uv:
@@ -114,7 +114,7 @@ disabled_commands = ["/pik"]  # disable specific commands
 
 Run tests:
 ```
-make @test
+just test
 ```
 
 Or directly:
@@ -124,5 +124,5 @@ uv run pytest -s -vv tests/
 
 Update dependencies:
 ```
-make lock
+just lock
 ```
