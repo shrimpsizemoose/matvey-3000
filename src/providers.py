@@ -12,11 +12,21 @@ import httpx
 import openai
 import replicate
 
+from conversation import (
+    ChatMessage,
+    ConversationProviderRegistry,
+    OpenAIConversationProvider,
+)
 
 logger = logging.getLogger(__name__)
 
 openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 anthro_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+conversation_providers = ConversationProviderRegistry()
+conversation_providers.register(
+    'openai',
+    OpenAIConversationProvider(openai_client),
+)
 
 # Limit concurrent transcription requests to avoid rate limits and resource contention
 TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(3)
@@ -39,11 +49,13 @@ class TextResponse:
         logger.debug('Generating text response: provider=%s, model=%s, message_count=%d',
                      provider, model, len(messages))
         if provider == config.PROVIDER_OPENAI:
-            return await cls._generate_openai(
-                openai_client,
-                model,
-                messages,
+            result = await conversation_providers.get(provider).generate(
+                model=model,
+                messages=[
+                    ChatMessage(role=role, content=text) for role, text in messages
+                ],
             )
+            return cls(success=result.success, text=result.text)
         elif provider == config.PROVIDER_ANTHROPIC:
             return await cls._generate_anthropic(
                 anthro_client,
@@ -60,41 +72,6 @@ class TextResponse:
         else:
             logger.error('Unsupported provider: %s', provider)
             return cls(success=False, text=f'Unsupported provider: {provider}')
-
-    @classmethod
-    async def _generate_openai(cls, client, model, messages):
-        logger.debug('OpenAI request: model=%s, message_count=%d', model, len(messages))
-        payload = [{'role': role, 'content': text} for role, text in messages]
-        try:
-            response = await client.chat.completions.create(
-                model=model,
-                messages=payload,
-            )
-        except openai.RateLimitError as e:
-            logger.warning('OpenAI rate limit error: %s', e)
-            return cls(
-                success=False,
-                text=f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}',  # noqa
-            )
-        except openai.BadRequestError as e:
-            logger.warning('OpenAI bad request error: %s', e)
-            return cls(
-                success=False,
-                text=f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}',  # noqa
-            )
-        except TimeoutError as e:
-            logger.error('OpenAI timeout error: %s', e)
-            return cls(
-                success=False,
-                text=f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}',  # noqa
-            )
-        else:
-            logger.debug('OpenAI response received: model=%s, response_length=%d',
-                         model, len(response.choices[0].message.content))
-            return cls(
-                success=True,
-                text=response.choices[0].message.content,
-            )
 
     @classmethod
     async def _generate_anthropic(cls, client, model, messages):
