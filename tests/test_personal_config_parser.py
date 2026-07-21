@@ -44,12 +44,10 @@ def tmp_path_toml_config_v4(tmp_path, bot_me, user1_id, user2_id, default_prompt
     negative_emojis = "👎🤔🤯🤬💔"
 
     [models]
-    chatgpt = "gpt-3.5-turbo-1106"
-    anthropic = "claude-2"
-    yandexgpt = "yandexgpt-lite"
+    chatgpt = "gpt-5.6-terra"
 
     [defaults]
-    provider = "yandexgpt"
+    provider = "openai"
     prompt = """
     {default_prompt}
     """

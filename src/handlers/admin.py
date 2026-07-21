@@ -27,25 +27,6 @@ async def dump_message_info(message: types.Message):
 
 @router.message(
     command_enabled,
-    Command(commands=['mode_claude'], ignore_mention=True),
-)
-async def switch_to_claude(message: types.Message, config: Config):
-    logger.info(
-        'Command /mode_claude received from chat_id=%s user=%s',
-        message.chat.id,
-        message.from_user.username,
-    )
-    config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_ANTHROPIC)
-    logger.info(
-        'Provider switched to %s for chat_id=%s',
-        config.PROVIDER_ANTHROPIC,
-        message.chat.id,
-    )
-    await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_ANTHROPIC}!')
-
-
-@router.message(
-    command_enabled,
     Command(commands=['mode_chatgpt'], ignore_mention=True),
 )
 async def switch_to_chatgpt(message: types.Message, config: Config):
@@ -61,25 +42,6 @@ async def switch_to_chatgpt(message: types.Message, config: Config):
         message.chat.id,
     )
     await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_OPENAI}!')
-
-
-@router.message(
-    command_enabled,
-    Command(commands=['mode_yandex'], ignore_mention=True),
-)
-async def switch_to_yandexgpt(message: types.Message, config: Config):
-    logger.info(
-        'Command /mode_yandex received from chat_id=%s user=%s',
-        message.chat.id,
-        message.from_user.username,
-    )
-    config.override_provider_for_chat_id(message.chat.id, config.PROVIDER_YANDEXGPT)
-    logger.info(
-        'Provider switched to %s for chat_id=%s',
-        config.PROVIDER_YANDEXGPT,
-        message.chat.id,
-    )
-    await message.reply(f'🤖теперь я на мозгах {config.PROVIDER_YANDEXGPT}!')
 
 
 @router.message(chat_allowed, Command(commands=['prompt']))

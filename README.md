@@ -2,18 +2,36 @@
 
 Very simple implementation of a private bot that responds to short chat messages. Almost non-existent context awareness
 
-## Using docker-compose
+## Using Docker Compose
 
-Copy matvey-template.toml to matvey.toml, adjust accordingly, copy example docker-compose template and adjust env vars:
+Copy the configuration and Compose templates, then adjust the configuration and
+environment variables:
 
-```
-cp matvey-template-v2.toml matvey.toml
+```shell
+cp matvey-template.toml matvey.toml
 cp docker-compose-template.yml docker-compose.yml
-(edit both files)
-docker compose up
+# Edit matvey.toml and docker-compose.yml.
+VERSION=0.18.0 docker compose up -d
 ```
 
-## quickstart quide
+`VERSION` selects the container image tag to run. Redis data is ephemeral by
+default. To persist conversation history and FSM state, uncomment both
+`redis-data` volume sections in `docker-compose.yml`.
+
+## Deploying to Kubernetes
+
+Before applying `k8s/deployments.yaml.template`, replace the `VERSION` image-tag
+placeholder with the version being deployed. For example:
+
+```shell
+sed 's/VERSION/0.18.0/g' k8s/deployments.yaml.template > k8s/deployments.yaml
+kubectl apply -f k8s/configmaps.yaml -f k8s/secrets.yaml -f k8s/deployments.yaml
+```
+
+Apply the ConfigMap and Secret generated from their respective templates as part
+of the same deployment.
+
+## Quickstart guide
 
 ### 0. Install uv and dependencies
 
@@ -31,15 +49,12 @@ uv sync
 
 This project works with python 3.11+.
 
-### 1. Set environmental variables
+### 1. Set environment variables
 
 | var | example | meaning |
 | --- | ------  | ------- |
 | `OPENAI_API_KEY` | `'sk-HS1777777777777777777777777771'` | openapi key |
-| `ANTHROPIC_API_KEY` | `sk-ant-api03-99-jp...Q-6...A..A'` | anthropic_key |
 | `TELEGRAM_API_TOKEN` | `'667778888:AAHmHmAAAAAAAHmHmHm'` | bot token |
-| `YANDEXGPT_FOLDER_ID` | `b1g7oooooooooooooooo` | yandex service folder id |
-| `YANDEXGPT_API_KEY` | `AQiiii..........iiiiii-rzO` | yandex gpt api key |
 | `KANDINSKI_API_KEY` | `CD53.................0F49F` | kandinski api key |
 | `KANDINSKI_API_SECRET` | `4A470B............98942` | kandinski api secret |
 | `REPLICATE_API_TOKEN` | `r8_xxxxxxxxxx` | Replicate API token for photo editing |
@@ -83,9 +98,7 @@ Don't know the group id? Launch the script, add the bot to the chat and issue a 
 | `/tts [voice:] <text>` | Convert text to speech (requires `voice_enabled`) |
 | `/ru <text>` | Translate to Russian |
 | `/en <text>` | Translate to English |
-| `/mode_claude` | Switch to Anthropic Claude |
 | `/mode_chatgpt` | Switch to OpenAI ChatGPT |
-| `/mode_yandex` | Switch to YandexGPT |
 | `/prompt [new_prompt]` | Show or set system prompt |
 | `/new_chat` | Clear conversation history |
 | `/blerb` | Show chat ID |
@@ -100,7 +113,7 @@ In your TOML config, each chat can have these options:
 [[chats.allowed]]
 id = 123456789
 who = "user or group name"
-provider = "openai"           # openai, anthropic, or yandexgpt
+provider = "openai"
 save_messages = true          # persist messages to Redis
 context_enabled = true        # use conversation history
 max_context_messages = 10     # how many messages to include

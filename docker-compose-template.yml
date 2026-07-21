@@ -1,17 +1,23 @@
-version: '3'
-
 services:
   matvey:
-    image: ghcr.io/shrimpsizemoose/matvey-3000:0.9.0
+    image: ghcr.io/shrimpsizemoose/matvey-3000:${VERSION:?Set VERSION}
     environment:
       TELEGRAM_API_TOKEN: '667778888:AAHmHmHmHmHmHmAAAAAAAAAAAHmHmHmHmHm'
       OPENAI_API_KEY: 'sk-HS1777777777777777777777777777777777777777777771'
-      BOT_CONFIG_TOML: '/bot/matvey.yml'
+      BOT_CONFIG_TOML: '/bot/matvey.toml'
+      KANDINSKI_API_KEY: 'CD53D11E995...'
+      KANDINSKI_API_SECRET: '4A470B61...'
       REDIS_URL: 'redis://redis:6379/0'
     volumes:
-      - ./matvey.yml:/bot/matvey.yml
+      - ./matvey.toml:/bot/matvey.toml
 
   redis:
-    image: redis:5-alpine
-    ports:
-      - 6379:6379
+    image: redis:7-alpine
+    # ports:
+    #   - 6379:6379
+    # volumes:
+    #   - redis-data:/data
+
+# Uncomment together with the Redis volume mount above.
+# volumes:
+#   redis-data:

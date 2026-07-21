@@ -103,8 +103,6 @@ async def test_text_response_routes_openai_through_registry():
     providers = SimpleNamespace(conversation_providers=registry)
     config = SimpleNamespace(
         PROVIDER_OPENAI="openai",
-        PROVIDER_ANTHROPIC="anthropic",
-        PROVIDER_YANDEXGPT="yandexgpt",
         provider_for_chat_id=lambda _chat_id: "openai",
         model_for_chat_id=lambda _chat_id: "test-model",
     )

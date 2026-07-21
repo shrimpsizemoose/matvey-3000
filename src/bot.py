@@ -7,7 +7,6 @@ import os
 import random
 from dataclasses import dataclass
 
-import anthropic
 import openai
 from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
@@ -83,7 +82,6 @@ def create_dependencies_from_env() -> ApplicationDependencies:
     config = Config.read_toml(path=os.environ['BOT_CONFIG_TOML'])
     message_store = MessageStore(os.environ['REDIS_URL'])
     openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-    anthropic_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
     conversation_providers = ConversationProviderRegistry()
     conversation_providers.register(
         'openai',
@@ -92,10 +90,7 @@ def create_dependencies_from_env() -> ApplicationDependencies:
     providers = ProviderDependencies(
         conversation_providers=conversation_providers,
         openai_client=openai_client,
-        anthropic_client=anthropic_client,
         settings=ProviderSettings(
-            yandex_folder_id=os.getenv('YANDEXGPT_FOLDER_ID', 'NoYaFolder'),
-            yandex_api_key=os.getenv('YANDEXGPT_API_KEY', 'NoYaKey'),
             kandinski_api_key=os.getenv('KANDINSKI_API_KEY', 'KandiKeyOopsie'),
             kandinski_api_secret=os.getenv('KANDINSKI_API_SECRET', 'KandiSecretOopsie'),
         ),
@@ -147,7 +142,6 @@ async def main() -> None:
         await dp.start_polling(bot)
     finally:
         await providers.openai_client.close()
-        await providers.anthropic_client.close()
 
 
 if __name__ == '__main__':

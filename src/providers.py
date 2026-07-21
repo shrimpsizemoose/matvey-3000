@@ -2,11 +2,9 @@ import asyncio
 import base64
 import json
 import logging
-import textwrap
 from dataclasses import dataclass
 from typing import Any
 
-import anthropic
 import httpx
 import openai
 import replicate
@@ -24,8 +22,6 @@ TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(3)
 
 @dataclass(frozen=True)
 class ProviderSettings:
-    yandex_folder_id: str
-    yandex_api_key: str
     kandinski_api_key: str
     kandinski_api_secret: str
 
@@ -34,7 +30,6 @@ class ProviderSettings:
 class ProviderDependencies:
     conversation_providers: ConversationProviderRegistry
     openai_client: Any
-    anthropic_client: Any
     settings: ProviderSettings
 
 
@@ -53,144 +48,19 @@ class TextResponse:
             model,
             len(messages),
         )
-        if provider == config.PROVIDER_OPENAI:
-            result = await providers.conversation_providers.get(provider).generate(
+        try:
+            conversation_provider = providers.conversation_providers.get(provider)
+        except ValueError:
+            logger.error('Unsupported provider: %s', provider)
+            return cls(success=False, text=f'Unsupported provider: {provider}')
+        else:
+            result = await conversation_provider.generate(
                 model=model,
                 messages=[
                     ChatMessage(role=role, content=text) for role, text in messages
                 ],
             )
             return cls(success=result.success, text=result.text)
-        elif provider == config.PROVIDER_ANTHROPIC:
-            return await cls._generate_anthropic(
-                providers.anthropic_client,
-                model,
-                messages,
-            )
-        elif provider == config.PROVIDER_YANDEXGPT:
-            async with httpx.AsyncClient() as httpx_client:
-                return await cls._generate_yandexgpt(
-                    httpx_client,
-                    providers.settings,
-                    model,
-                    messages,
-                )
-        else:
-            logger.error('Unsupported provider: %s', provider)
-            return cls(success=False, text=f'Unsupported provider: {provider}')
-
-    @classmethod
-    async def _generate_anthropic(cls, client, model, messages):
-        logger.debug(
-            'Anthropic request: model=%s, message_count=%d', model, len(messages)
-        )
-        user_tag = anthropic.HUMAN_PROMPT
-        bot_tag = anthropic.AI_PROMPT
-        system = [text for role, text in messages if role == 'system'][0]
-
-        # claude 2.1 might need different format for prompting since it has system prompts
-        # full_prompt = f'{system} {user_tag}{human}{bot_tag}'
-
-        # claude instant 1.2 though... Needs a different thing
-        prompt = textwrap.dedent(
-            """
-                Here are a few back and forth messages between user and a bot.
-                User messages are in tag <user>, bot messages are in tag <bot>
-            """.strip()
-        )
-        prompt = [f'{user_tag}{prompt}']
-        for role, text in messages:
-            if role == 'system':
-                continue
-            prompt.append(f'\n<{role}>{text}</{role}>')
-        prompt.append(f'\n{system}')
-        prompt.append(
-            '\nTake content of last unpaired "user" and use this as completion prompt.'
-        )
-        prompt.append(f'\nRespond ONLY with text and no tags.{bot_tag}')
-        prompt = ''.join(prompt)
-
-        try:
-            response = await client.completions.create(
-                model=model,
-                max_tokens_to_sample=1024,  # no clue about this value
-                prompt=prompt,
-            )
-        except openai.RateLimitError as e:
-            logger.warning('Anthropic rate limit error: %s', e)
-            return cls(
-                success=False,
-                text=f'Кажется я подустал и воткнулся в рейт-лимит. Давай сделаем перерыв ненадолго.\n\n{e}',  # noqa
-            )
-        except openai.BadRequestError as e:
-            logger.warning('Anthropic bad request error: %s', e)
-            return cls(
-                success=False,
-                text=f'Beep-bop, кажется я не умею отвечать на такие вопросы:\n\n{e}',  # noqa
-            )
-        except TimeoutError as e:
-            logger.error('Anthropic timeout error: %s', e)
-            return cls(
-                success=False,
-                text=f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}',  # noqa
-            )
-        else:
-            completion = response.completion.replace('<', '[').replace('>', ']')
-            logger.debug(
-                'Anthropic response received: model=%s, response_length=%d',
-                model,
-                len(completion),
-            )
-            return cls(
-                success=True,
-                text=completion,
-            )
-
-    @classmethod
-    async def _generate_yandexgpt(cls, client, settings, model, messages):
-        logger.debug(
-            'YandexGPT request: model=%s, message_count=%d', model, len(messages)
-        )
-        params = {
-            'messages': [{'role': role, 'text': text} for role, text in messages],
-            'modelUri': f'gpt://{settings.yandex_folder_id}/{model}',
-            'completionOptions': {
-                'stream': False,
-                'temperature': 0.6,
-                'maxTokens': '1000',
-            },
-        }
-        headers = {
-            'Authorization': f'Api-Key {settings.yandex_api_key}',
-            'x-folder-id': settings.yandex_folder_id,
-        }
-        response = await client.post(
-            'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
-            json=params,
-            headers=headers,
-        )
-        if response.status_code == 200:
-            data = response.json()
-            text = data['result']['alternatives'][0]['message']['text']
-            logger.debug(
-                'YandexGPT response received: model=%s, response_length=%d',
-                model,
-                len(text),
-            )
-            return cls(
-                success=True,
-                text=text,
-            )
-        else:
-            logger.error(
-                'YandexGPT request failed: status_code=%d, response=%s',
-                response.status_code,
-                response.text[:200],
-            )
-            return cls(
-                success=False,
-                text=response.text,
-            )
 
 
 async def speedup_audio(audio_bytes: bytes, factor: float = 2.0) -> bytes:
