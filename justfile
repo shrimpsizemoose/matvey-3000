@@ -4,6 +4,7 @@ app := "matvey-3000"
 version := `git describe --tags`
 bot_service_tag := registry + "/" + namespace + "/" + app + ":" + version
 k8s_namespace := "matvey-gang"
+uv_cache_dir := "/tmp/matvey-uv-cache"
 
 # List all available recipes.
 _:
@@ -11,15 +12,15 @@ _:
 
 # Run the Telegram bot locally.
 run:
-  uv run python src/bot_handler.py
+  UV_CACHE_DIR={{ uv_cache_dir }} uv run python src/bot_handler.py
 
 # Install and synchronize project dependencies.
 sync:
-  uv sync
+  UV_CACHE_DIR={{ uv_cache_dir }} uv sync
 
 # Update the locked dependency versions.
 lock:
-  uv lock
+  UV_CACHE_DIR={{ uv_cache_dir }} uv lock
 
 # Build the bot's Docker image with the current Git version tag.
 build-bot:
@@ -31,7 +32,7 @@ push-bot:
 
 # Run the complete test suite with verbose output.
 test:
-  uv run pytest -s -vv tests/
+  UV_CACHE_DIR={{ uv_cache_dir }} uv run pytest -s -vv tests/
 
 # Print the current Git version and full Docker image tag.
 echo-version:
