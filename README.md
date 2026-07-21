@@ -36,10 +36,7 @@ This project works with python 3.11+.
 | var | example | meaning |
 | --- | ------  | ------- |
 | `OPENAI_API_KEY` | `'sk-HS1777777777777777777777777771'` | openapi key |
-| `ANTHROPIC_API_KEY` | `sk-ant-api03-99-jp...Q-6...A..A'` | anthropic_key |
 | `TELEGRAM_API_TOKEN` | `'667778888:AAHmHmAAAAAAAHmHmHm'` | bot token |
-| `YANDEXGPT_FOLDER_ID` | `b1g7oooooooooooooooo` | yandex service folder id |
-| `YANDEXGPT_API_KEY` | `AQiiii..........iiiiii-rzO` | yandex gpt api key |
 | `KANDINSKI_API_KEY` | `CD53.................0F49F` | kandinski api key |
 | `KANDINSKI_API_SECRET` | `4A470B............98942` | kandinski api secret |
 | `REPLICATE_API_TOKEN` | `r8_xxxxxxxxxx` | Replicate API token for photo editing |
@@ -83,9 +80,7 @@ Don't know the group id? Launch the script, add the bot to the chat and issue a 
 | `/tts [voice:] <text>` | Convert text to speech (requires `voice_enabled`) |
 | `/ru <text>` | Translate to Russian |
 | `/en <text>` | Translate to English |
-| `/mode_claude` | Switch to Anthropic Claude |
 | `/mode_chatgpt` | Switch to OpenAI ChatGPT |
-| `/mode_yandex` | Switch to YandexGPT |
 | `/prompt [new_prompt]` | Show or set system prompt |
 | `/new_chat` | Clear conversation history |
 | `/blerb` | Show chat ID |
@@ -100,7 +95,7 @@ In your TOML config, each chat can have these options:
 [[chats.allowed]]
 id = 123456789
 who = "user or group name"
-provider = "openai"           # openai, anthropic, or yandexgpt
+provider = "openai"
 save_messages = true          # persist messages to Redis
 context_enabled = true        # use conversation history
 max_context_messages = 10     # how many messages to include

@@ -59,8 +59,6 @@ class Config:
     git_sha: str
 
     model_chatgpt: str
-    model_anthropic: str
-    model_yandexgpt: str
 
     en_to_ru_prompt: str
     ru_to_en_prompt: str
@@ -68,8 +66,6 @@ class Config:
     negative_emojis: str
 
     PROVIDER_OPENAI = 'openai'
-    PROVIDER_ANTHROPIC = 'anthropic'
-    PROVIDER_YANDEXGPT = 'yandexgpt'
 
     TTS_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']
 
@@ -90,9 +86,7 @@ class Config:
         '/tts',
         '/cancel',
         '/blerb',
-        '/mode_claude',
         '/mode_chatgpt',
-        '/mode_yandex',
         '/ru',
         '/en',
         '/prompt',
@@ -146,8 +140,6 @@ class Config:
             allowed_chat_id=allowed_chat_ids,
             git_sha=git_sha,
             model_chatgpt=config['models']['chatgpt'],
-            model_anthropic=config['models']['anthropic'],
-            model_yandexgpt=config['models']['yandexgpt'],
             en_to_ru_prompt=config['translations']['en_to_ru'],
             ru_to_en_prompt=config['translations']['ru_to_en'],
             positive_emojis=config['positive_emojis'],
@@ -175,8 +167,6 @@ class Config:
         # this should be per-chat setting???
         return {
             self.PROVIDER_OPENAI: self.model_chatgpt,
-            self.PROVIDER_ANTHROPIC: self.model_anthropic,
-            self.PROVIDER_YANDEXGPT: self.model_yandexgpt,
         }[provider]
 
     async def filter_chat_allowed(self, message) -> bool:

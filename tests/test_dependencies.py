@@ -37,7 +37,6 @@ def test_dependency_factory_constructs_external_clients(monkeypatch):
     fake_config = SimpleNamespace()
     fake_store = SimpleNamespace()
     fake_openai_client = SimpleNamespace()
-    fake_anthropic_client = SimpleNamespace()
     monkeypatch.setenv('TELEGRAM_API_TOKEN', '123456:test-token')
     monkeypatch.setenv('BOT_CONFIG_TOML', '/config/test.toml')
     monkeypatch.setenv('REDIS_URL', 'redis://test:6379/0')
@@ -49,11 +48,6 @@ def test_dependency_factory_constructs_external_clients(monkeypatch):
         'AsyncOpenAI',
         Mock(return_value=fake_openai_client),
     )
-    monkeypatch.setattr(
-        bot.anthropic,
-        'AsyncAnthropic',
-        Mock(return_value=fake_anthropic_client),
-    )
 
     dependencies = bot.create_dependencies_from_env()
 
@@ -61,4 +55,3 @@ def test_dependency_factory_constructs_external_clients(monkeypatch):
     assert dependencies.config is fake_config
     assert dependencies.message_store is fake_store
     assert dependencies.providers.openai_client is fake_openai_client
-    assert dependencies.providers.anthropic_client is fake_anthropic_client

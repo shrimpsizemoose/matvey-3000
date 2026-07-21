@@ -45,21 +45,6 @@ spec:
                 secretKeyRef:
                   name: matvey-secrets
                   key: OPENAI_API_KEY
-            - name: ANTHROPIC_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: matvey-secrets
-                  key: ANTHROPIC_API_KEY
-            - name: YANDEXGPT_FOLDER_ID
-              valueFrom:
-                secretKeyRef:
-                  name: matvey-secrets
-                  key: YANDEXGPT_FOLDER_ID
-            - name: YANDEXGPT_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: matvey-secrets
-                  key: YANDEXGPT_API_KEY
             - name: KANDINSKI_API_KEY
               valueFrom:
                 secretKeyRef:
