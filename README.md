@@ -2,18 +2,36 @@
 
 Very simple implementation of a private bot that responds to short chat messages. Almost non-existent context awareness
 
-## Using docker-compose
+## Using Docker Compose
 
-Copy matvey-template.toml to matvey.toml, adjust accordingly, copy example docker-compose template and adjust env vars:
+Copy the configuration and Compose templates, then adjust the configuration and
+environment variables:
 
-```
-cp matvey-template-v2.toml matvey.toml
+```shell
+cp matvey-template.toml matvey.toml
 cp docker-compose-template.yml docker-compose.yml
-(edit both files)
-docker compose up
+# Edit matvey.toml and docker-compose.yml.
+VERSION=0.18.0 docker compose up -d
 ```
 
-## quickstart quide
+`VERSION` selects the container image tag to run. Redis data is ephemeral by
+default. To persist conversation history and FSM state, uncomment both
+`redis-data` volume sections in `docker-compose.yml`.
+
+## Deploying to Kubernetes
+
+Before applying `k8s/deployments.yaml.template`, replace the `VERSION` image-tag
+placeholder with the version being deployed. For example:
+
+```shell
+sed 's/VERSION/0.18.0/g' k8s/deployments.yaml.template > k8s/deployments.yaml
+kubectl apply -f k8s/configmaps.yaml -f k8s/secrets.yaml -f k8s/deployments.yaml
+```
+
+Apply the ConfigMap and Secret generated from their respective templates as part
+of the same deployment.
+
+## Quickstart guide
 
 ### 0. Install uv and dependencies
 
@@ -31,7 +49,7 @@ uv sync
 
 This project works with python 3.11+.
 
-### 1. Set environmental variables
+### 1. Set environment variables
 
 | var | example | meaning |
 | --- | ------  | ------- |
