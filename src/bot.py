@@ -39,19 +39,19 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
         try:
             tmp = cur.reply_to_message
             if tmp is not None:
-                role = "assistant" if tmp.from_user.id == bot_id else "user"
+                role = 'assistant' if tmp.from_user.id == bot_id else 'user'
                 if tmp.text:
                     payload.appendleft((role, tmp.text))
                 elif tmp.caption:
                     payload.appendleft(
-                        (role, f"imagine an image with comment: {tmp.caption}")
+                        (role, f'imagine an image with comment: {tmp.caption}')
                     )
                 cur = tmp
             else:
                 break
         except AttributeError:
             break
-    payload.append(("user", last_message_in_thread.text))
+    payload.append(('user', last_message_in_thread.text))
     return [(role, text) for role, text in payload]
 
 
@@ -115,24 +115,24 @@ async def main() -> None:
     message_store = dependencies.message_store
     providers = dependencies.providers
     logger.info(
-        "Starting bot with config version=%s, bot_username=%s",
+        'Starting bot with config version=%s, bot_username=%s',
         config.version,
         config.me,
     )
-    logger.info("Configured chats: %d, git_sha=%s", len(config), config.git_sha)
+    logger.info('Configured chats: %d, git_sha=%s', len(config), config.git_sha)
 
     metrics.start_metrics_server()
-    logger.info("Metrics server started on port %d", metrics.METRICS_PORT)
+    logger.info('Metrics server started on port %d', metrics.METRICS_PORT)
 
-    redis_url = os.getenv("REDIS_URL")
-    fsm_prefix = os.getenv("FSM_REDIS_PREFIX", f"fsm:{config.me_strip_lower}")
+    redis_url = os.environ['REDIS_URL']
+    fsm_prefix = os.getenv('FSM_REDIS_PREFIX', f'fsm:{config.me_strip_lower}')
     storage = RedisStorage.from_url(
         redis_url,
         key_builder=DefaultKeyBuilder(prefix=fsm_prefix),
         state_ttl=300,
         data_ttl=300,
     )
-    logger.info("FSM storage initialized with prefix=%s", fsm_prefix)
+    logger.info('FSM storage initialized with prefix=%s', fsm_prefix)
 
     from handlers import include_all_routers
 
@@ -150,5 +150,5 @@ async def main() -> None:
         await providers.anthropic_client.close()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
