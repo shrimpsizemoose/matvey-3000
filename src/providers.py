@@ -2,10 +2,9 @@ import asyncio
 import base64
 import json
 import logging
-import os
 import textwrap
 from dataclasses import dataclass
-from enum import Enum
+from typing import Any
 
 import anthropic
 import httpx
@@ -15,26 +14,28 @@ import replicate
 from conversation import (
     ChatMessage,
     ConversationProviderRegistry,
-    OpenAIConversationProvider,
 )
 
 logger = logging.getLogger(__name__)
 
-openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-anthro_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
-conversation_providers = ConversationProviderRegistry()
-conversation_providers.register(
-    'openai',
-    OpenAIConversationProvider(openai_client),
-)
-
 # Limit concurrent transcription requests to avoid rate limits and resource contention
 TRANSCRIPTION_SEMAPHORE = asyncio.Semaphore(3)
 
-yagpt_folder_id = os.getenv('YANDEXGPT_FOLDER_ID', default='NoYaFolder')
-yagpt_api_key = os.getenv('YANDEXGPT_API_KEY', default='NoYaKey')
-kandinski_api_key = os.getenv('KANDINSKI_API_KEY', default='KandiKeyOopsie')
-kandinski_api_secret = os.getenv('KANDINSKI_API_SECRET', default='KandiSecretOopsie')
+
+@dataclass(frozen=True)
+class ProviderSettings:
+    yandex_folder_id: str
+    yandex_api_key: str
+    kandinski_api_key: str
+    kandinski_api_secret: str
+
+
+@dataclass(frozen=True)
+class ProviderDependencies:
+    conversation_providers: ConversationProviderRegistry
+    openai_client: Any
+    anthropic_client: Any
+    settings: ProviderSettings
 
 
 @dataclass(frozen=True)
@@ -43,7 +44,7 @@ class TextResponse:
     text: str
 
     @classmethod
-    async def generate(cls, config, chat_id, messages):
+    async def generate(cls, providers, config, chat_id, messages):
         provider = config.provider_for_chat_id(chat_id)
         model = config.model_for_chat_id(chat_id)
         logger.debug(
@@ -53,7 +54,7 @@ class TextResponse:
             len(messages),
         )
         if provider == config.PROVIDER_OPENAI:
-            result = await conversation_providers.get(provider).generate(
+            result = await providers.conversation_providers.get(provider).generate(
                 model=model,
                 messages=[
                     ChatMessage(role=role, content=text) for role, text in messages
@@ -62,7 +63,7 @@ class TextResponse:
             return cls(success=result.success, text=result.text)
         elif provider == config.PROVIDER_ANTHROPIC:
             return await cls._generate_anthropic(
-                anthro_client,
+                providers.anthropic_client,
                 model,
                 messages,
             )
@@ -70,6 +71,7 @@ class TextResponse:
             async with httpx.AsyncClient() as httpx_client:
                 return await cls._generate_yandexgpt(
                     httpx_client,
+                    providers.settings,
                     model,
                     messages,
                 )
@@ -145,13 +147,13 @@ class TextResponse:
             )
 
     @classmethod
-    async def _generate_yandexgpt(cls, client, model, messages):
+    async def _generate_yandexgpt(cls, client, settings, model, messages):
         logger.debug(
             'YandexGPT request: model=%s, message_count=%d', model, len(messages)
         )
         params = {
             'messages': [{'role': role, 'text': text} for role, text in messages],
-            'modelUri': f'gpt://{yagpt_folder_id}/{model}',
+            'modelUri': f'gpt://{settings.yandex_folder_id}/{model}',
             'completionOptions': {
                 'stream': False,
                 'temperature': 0.6,
@@ -159,8 +161,8 @@ class TextResponse:
             },
         }
         headers = {
-            'Authorization': f'Api-Key {yagpt_api_key}',
-            'x-folder-id': yagpt_folder_id,
+            'Authorization': f'Api-Key {settings.yandex_api_key}',
+            'x-folder-id': settings.yandex_folder_id,
         }
         response = await client.post(
             'https://llm.api.cloud.yandex.net/foundationModels/v1/completion',
@@ -227,6 +229,7 @@ class AudioResponse:
     @classmethod
     async def transcribe(
         cls,
+        providers,
         audio_bytes: bytes,
         filename: str = 'audio.ogg',
         speedup: float | None = None,
@@ -243,9 +246,11 @@ class AudioResponse:
         async with TRANSCRIPTION_SEMAPHORE:
             for attempt in range(3):
                 try:
-                    response = await openai_client.audio.transcriptions.create(
-                        model='whisper-1',
-                        file=(filename, audio_bytes),
+                    response = await (
+                        providers.openai_client.audio.transcriptions.create(
+                            model='whisper-1',
+                            file=(filename, audio_bytes),
+                        )
                     )
                     text = response.text
                     logger.info(
@@ -275,6 +280,7 @@ class AudioResponse:
     @classmethod
     async def text_to_speech(
         cls,
+        providers,
         text: str,
         voice: str = 'alloy',
         model: str = 'tts-1',
@@ -289,7 +295,7 @@ class AudioResponse:
                 success=False, data='Текст слишком длинный (макс. 4096 символов)'
             )
 
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = providers.openai_client
 
         try:
             response = await client.audio.speech.create(
@@ -319,13 +325,13 @@ class ImageResponse:
     censored: bool = False
 
     @classmethod
-    async def edit(cls, image_bytes: bytes, prompt: str):
+    async def edit(cls, providers, image_bytes: bytes, prompt: str):
         logger.info(
             'Image edit requested: prompt_length=%d, image_size=%d bytes',
             len(prompt or ''),
             len(image_bytes),
         )
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = providers.openai_client
         try:
             response = await client.images.edit(
                 model='dall-e-2',
@@ -353,6 +359,7 @@ class ImageResponse:
     @classmethod
     async def edit_with_mask(
         cls,
+        providers,
         image_bytes: bytes,
         mask_bytes: bytes,
         prompt: str,
@@ -374,7 +381,7 @@ class ImageResponse:
             len(image_bytes),
             len(mask_bytes),
         )
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = providers.openai_client
         try:
             response = await client.images.edit(
                 model='dall-e-2',
@@ -401,7 +408,7 @@ class ImageResponse:
             return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
 
     @classmethod
-    async def describe_image(cls, image_bytes: bytes) -> TextResponse:
+    async def describe_image(cls, providers, image_bytes: bytes) -> TextResponse:
         """
         Use GPT-4o Vision to describe an image.
 
@@ -415,7 +422,7 @@ class ImageResponse:
 
         logger.info('Image description requested: image_size=%d', len(image_bytes))
 
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = providers.openai_client
 
         # Encode image to base64
         b64_image = base64.b64encode(image_bytes).decode('utf-8')
@@ -467,6 +474,7 @@ class ImageResponse:
     @classmethod
     async def reimagine(
         cls,
+        providers,
         image_bytes: bytes,
         modification_prompt: str,
     ):
@@ -492,14 +500,14 @@ class ImageResponse:
         )
 
         # Step 1: Describe the image
-        description_response = await cls.describe_image(image_bytes)
+        description_response = await cls.describe_image(providers, image_bytes)
         if not description_response.success:
             return cls(success=False, b64_or_url=description_response.text)
 
         original_description = description_response.text
 
         # Step 2: Create modified prompt using GPT
-        client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        client = providers.openai_client
 
         try:
             prompt_response = await client.chat.completions.create(
@@ -538,13 +546,13 @@ class ImageResponse:
         )
 
     @classmethod
-    async def generate(cls, prompt, mode='dall-e'):
+    async def generate(cls, providers, prompt, mode='dall-e'):
         logger.info(
             'Image generation requested: mode=%s, prompt_length=%d',
             mode,
             len(prompt or ''),
         )
-        openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        openai_client = providers.openai_client
         match mode:
             case 'dall-e':
                 return await cls._generate_dalle(
@@ -556,7 +564,11 @@ class ImageResponse:
                 )
             case 'kandinski':
                 async with httpx.AsyncClient() as httpx_client:
-                    return await cls._generate_kandinski(httpx_client, prompt)
+                    return await cls._generate_kandinski(
+                        httpx_client,
+                        providers.settings,
+                        prompt,
+                    )
             case _:
                 logger.error('Unsupported image generation mode: %s', mode)
                 return cls(success=False, b64_or_url=f'Unsupported provider: {mode}')
@@ -576,12 +588,12 @@ class ImageResponse:
         return cls(success=True, b64_or_url=img_gen_reply.data[0].url)
 
     @classmethod
-    async def _generate_kandinski(cls, client, prompt):
+    async def _generate_kandinski(cls, client, settings, prompt):
         logger.debug('Kandinski request: prompt=%r', prompt)
         BASE_URL = 'https://api-key.fusionbrain.ai/key/api/v1'
         headers = {
-            'X-Key': f'Key {kandinski_api_key}',
-            'x-Secret': f'Secret {kandinski_api_secret}',
+            'X-Key': f'Key {settings.kandinski_api_key}',
+            'x-Secret': f'Secret {settings.kandinski_api_secret}',
         }
         # pick model
         response = await client.get(

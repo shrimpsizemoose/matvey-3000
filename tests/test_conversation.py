@@ -92,7 +92,7 @@ def test_provider_registry_rejects_unknown_provider():
         registry.get("ollama")
 
 
-async def test_text_response_routes_openai_through_registry(monkeypatch):
+async def test_text_response_routes_openai_through_registry():
     provider = SimpleNamespace(
         generate=AsyncMock(
             return_value=ConversationResult(success=True, text="adapter response")
@@ -100,7 +100,7 @@ async def test_text_response_routes_openai_through_registry(monkeypatch):
     )
     registry = ConversationProviderRegistry()
     registry.register("openai", provider)
-    monkeypatch.setattr("providers.conversation_providers", registry)
+    providers = SimpleNamespace(conversation_providers=registry)
     config = SimpleNamespace(
         PROVIDER_OPENAI="openai",
         PROVIDER_ANTHROPIC="anthropic",
@@ -110,6 +110,7 @@ async def test_text_response_routes_openai_through_registry(monkeypatch):
     )
 
     result = await TextResponse.generate(
+        providers=providers,
         config=config,
         chat_id=123,
         messages=[("user", "Hello")],

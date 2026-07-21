@@ -3,23 +3,30 @@ import logging
 import time as time_module
 
 import openai
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from aiogram.filters import Command, CommandObject
 
-from bot import bot, config, react
+from bot import react
+from config import Config
+from filters import chat_allowed, command_enabled
 import metrics
-from providers import ImageResponse, TextResponse
+from providers import ImageResponse, ProviderDependencies, TextResponse
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
-    config.filter_chat_allowed,
+    command_enabled,
+    chat_allowed,
     Command(commands=["pic"]),
 )
-async def gimme_pic(message: types.Message, command: CommandObject):
+async def gimme_pic(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    providers: ProviderDependencies,
+):
     logger.info(
         "Command /pic received from chat_id=%s user=%s",
         message.chat.id,
@@ -30,7 +37,7 @@ async def gimme_pic(message: types.Message, command: CommandObject):
     logger.debug("DALL-E image generation requested, prompt=%r", prompt)
     await message.chat.do("upload_photo")
     try:
-        response = await ImageResponse.generate(prompt, mode="dall-e")
+        response = await ImageResponse.generate(providers, prompt, mode="dall-e")
     except openai.BadRequestError as e:
         logger.warning(
             "DALL-E generation failed for chat_id=%s, prompt=%r, error=%s",
@@ -49,12 +56,13 @@ async def gimme_pic(message: types.Message, command: CommandObject):
         )
         await message.chat.do("typing")
         llm_reply = await TextResponse.generate(
+            providers=providers,
             config=config,
             chat_id=message.chat.id,
             messages=messages_to_send,
         )
         await message.answer(llm_reply.text)
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     else:
         logger.info(
             "DALL-E image generated successfully for chat_id=%s", message.chat.id
@@ -65,17 +73,22 @@ async def gimme_pic(message: types.Message, command: CommandObject):
         image_from_url = types.URLInputFile(response.b64_or_url)
         caption = f"DALL-E 2 prompt: {prompt}"
         await message.answer_photo(image_from_url, caption=caption)
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     finally:
         metrics.request_duration.labels(command='pic').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
-    config.filter_chat_allowed,
+    command_enabled,
+    chat_allowed,
     Command(commands=["pic3"]),
 )
-async def gimme_pic3(message: types.Message, command: CommandObject):
+async def gimme_pic3(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    providers: ProviderDependencies,
+):
     logger.info(
         "Command /pic3 received from chat_id=%s user=%s",
         message.chat.id,
@@ -86,7 +99,7 @@ async def gimme_pic3(message: types.Message, command: CommandObject):
     logger.debug("DALL-E 3 image generation requested, prompt=%r", prompt)
     await message.chat.do("upload_photo")
     try:
-        response = await ImageResponse.generate(prompt, mode="dall-e-3")
+        response = await ImageResponse.generate(providers, prompt, mode="dall-e-3")
     except openai.BadRequestError as e:
         logger.warning(
             "DALL-E 3 generation failed for chat_id=%s, prompt=%r, error=%s",
@@ -105,12 +118,13 @@ async def gimme_pic3(message: types.Message, command: CommandObject):
         )
         await message.chat.do("typing")
         llm_reply = await TextResponse.generate(
+            providers=providers,
             config=config,
             chat_id=message.chat.id,
             messages=messages_to_send,
         )
         await message.answer(llm_reply.text)
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     else:
         logger.info(
             "DALL-E 3 image generated successfully for chat_id=%s", message.chat.id
@@ -121,17 +135,22 @@ async def gimme_pic3(message: types.Message, command: CommandObject):
         image_from_url = types.URLInputFile(response.b64_or_url)
         caption = f"DALL-E 3 prompt: {prompt}"
         await message.answer_photo(image_from_url, caption=caption)
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     finally:
         metrics.request_duration.labels(command='pic3').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["pik"]),
 )
-async def gimme_pikk(message: types.Message, command: CommandObject):
+async def gimme_pikk(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    providers: ProviderDependencies,
+):
     logger.info(
         "Command /pik received from chat_id=%s user=%s",
         message.chat.id,
@@ -139,13 +158,13 @@ async def gimme_pikk(message: types.Message, command: CommandObject):
     )
     if command.command in config[message.chat.id].disabled_commands:
         logger.debug("Command /pik is disabled for chat_id=%s", message.chat.id)
-        await react(False, message)
+        await react(False, message, config)
         return
     prompt = command.args
     logger.debug("Kandinski image generation requested, prompt=%r", prompt)
     await message.chat.do("upload_photo")
     try:
-        response = await ImageResponse.generate(prompt, mode="kandinski")
+        response = await ImageResponse.generate(providers, prompt, mode="kandinski")
     except openai.BadRequestError as e:
         logger.warning(
             "Kandinski generation failed for chat_id=%s, prompt=%r, error=%s",
@@ -162,12 +181,13 @@ async def gimme_pikk(message: types.Message, command: CommandObject):
         )
         await message.chat.do("typing")
         llm_reply = await TextResponse.generate(
+            providers=providers,
             config=config,
             chat_id=message.chat.id,
             messages=messages_to_send,
         )
         await message.answer(llm_reply.text)
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     else:
         await message.chat.do("upload_photo")
         if response.censored:
@@ -185,12 +205,13 @@ async def gimme_pikk(message: types.Message, command: CommandObject):
             )
             await message.chat.do("typing")
             llm_reply = await TextResponse.generate(
+                providers=providers,
                 config=config,
                 chat_id=message.chat.id,
                 messages=messages_to_send,
             )
             await message.answer(llm_reply.text)
-            await react(success=False, message=message)
+            await react(success=False, message=message, config=config)
         else:
             logger.info(
                 "Kandinski image generated successfully for chat_id=%s", message.chat.id
@@ -208,18 +229,21 @@ async def gimme_pikk(message: types.Message, command: CommandObject):
                 photo=image,
                 caption=caption,
             )
-            await react(success=True, message=message)
+            await react(success=True, message=message, config=config)
 
 
 @router.message(
     F.photo,
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["reimagine"], ignore_mention=True),
 )
 async def handle_reimagine(
     message: types.Message,
     command: CommandObject,
+    bot: Bot,
+    config: Config,
+    providers: ProviderDependencies,
 ) -> None:
     """Vision + DALL-E 3 reimagine flow."""
     logger.info(
@@ -234,7 +258,7 @@ async def handle_reimagine(
             "Please provide a description of how you want to modify the image.\n"
             "Example: <code>/reimagine make it look like a watercolor painting</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -248,7 +272,7 @@ async def handle_reimagine(
 
         await progress_msg.edit_text("Reimagining with DALL-E 3...")
 
-        response = await ImageResponse.reimagine(image_bytes, modification)
+        response = await ImageResponse.reimagine(providers, image_bytes, modification)
 
         await progress_msg.delete()
 
@@ -258,12 +282,12 @@ async def handle_reimagine(
                 image_from_url,
                 caption=f"Reimagined: {modification}",
             )
-            await react(success=True, message=message)
+            await react(success=True, message=message, config=config)
         else:
             await message.answer(response.b64_or_url)
-            await react(success=False, message=message)
+            await react(success=False, message=message, config=config)
 
     except Exception as e:
         logger.error("Reimagine error: %s", e, exc_info=True)
         await progress_msg.edit_text(f"Error: {e}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)

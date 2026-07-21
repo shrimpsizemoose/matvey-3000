@@ -3,24 +3,31 @@ import random
 import time
 import time as time_module
 
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from aiogram.filters import Command, CommandObject
 
-from bot import bot, config, extract_message_chain, message_store, react
+from bot import extract_message_chain, react
+from config import Config
+from filters import chat_allowed, command_enabled
 import metrics
-from message_store import StoredChatMessage
-from providers import TextResponse
+from message_store import MessageStore, StoredChatMessage
+from providers import ProviderDependencies, TextResponse
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["ru", "en"]),
 )
-async def translate_ruen(message: types.Message, command: CommandObject):
+async def translate_ruen(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    providers: ProviderDependencies,
+):
     logger.info(
         "Command /%s received from chat_id=%s user=%s",
         command.command,
@@ -31,7 +38,7 @@ async def translate_ruen(message: types.Message, command: CommandObject):
         logger.debug(
             "Command /%s is disabled for chat_id=%s", command.command, message.chat.id
         )
-        await react(False, message)
+        await react(False, message, config)
         return
     prompt_tuple = config.fetch_translation_prompt_tuple(command.command)
     messages_to_send = [prompt_tuple, ("user", command.args)]
@@ -42,17 +49,24 @@ async def translate_ruen(message: types.Message, command: CommandObject):
     )
     await message.chat.do("typing")
     llm_reply = await TextResponse.generate(
+        providers=providers,
         config=config,
         chat_id=message.chat.id,
         messages=messages_to_send,
     )
 
     await message.reply(llm_reply.text)
-    await react(llm_reply.success, message)
+    await react(llm_reply.success, message, config)
 
 
-@router.message(F.text, config.filter_chat_allowed)
-async def handle_text_message(message: types.Message):
+@router.message(F.text, chat_allowed)
+async def handle_text_message(
+    message: types.Message,
+    bot: Bot,
+    config: Config,
+    message_store: MessageStore,
+    providers: ProviderDependencies,
+):
     logger.debug(
         "Text message received from chat_id=%s user=%s, text_length=%d",
         message.chat.id,
@@ -147,6 +161,7 @@ async def handle_text_message(message: types.Message):
     )
 
     llm_reply = await TextResponse.generate(
+        providers=providers,
         config=config,
         chat_id=message.chat.id,
         messages=messages_to_send,
@@ -187,4 +202,4 @@ async def handle_text_message(message: types.Message):
         )
 
     metrics.request_duration.labels(command='chat').observe(time_module.perf_counter() - start_time)
-    await react(llm_reply.success, message)
+    await react(llm_reply.success, message, config)

@@ -5,18 +5,27 @@ import tiktoken
 from aiogram import Router, types
 from aiogram.filters import Command, CommandObject
 
-from bot import config, message_store, react
-from providers import TextResponse
+from bot import react
+from config import Config
+from filters import summary_enabled
+from message_store import MessageStore
+from providers import ProviderDependencies, TextResponse
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
 @router.message(
-    config.filter_summary_enabled,
+    summary_enabled,
     Command(commands=["samari", "sammari", "sum", "sosum"]),
 )
-async def handle_summary_command(message: types.Message, command: CommandObject):
+async def handle_summary_command(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    message_store: MessageStore,
+    providers: ProviderDependencies,
+):
     logger.info(
         "Command /%s (summary) received from chat_id=%s user=%s",
         command.command,
@@ -79,6 +88,7 @@ Sometimes you try to be funny by mixing up events and phrases, but never overdo 
             await progress.edit_text(f"Обрабатываю {entity} {i}/{total_chunks}")
             await message.chat.do("typing")
             llm_reply = await TextResponse.generate(
+                providers=providers,
                 config=config,
                 chat_id=message.chat.id,
                 messages=mm,
@@ -114,6 +124,7 @@ After you recap everything, highlight three most outstanding facts or points fro
     await progress.delete()
 
     llm_reply = await TextResponse.generate(
+        providers=providers,
         config=config,
         chat_id=message.chat.id,
         messages=[("system", final_prompt), ("user", final_summary)],
@@ -127,4 +138,4 @@ After you recap everything, highlight three most outstanding facts or points fro
         llm_reply.success,
     )
     await message.reply(llm_reply.text)
-    await react(llm_reply.success, message)
+    await react(llm_reply.success, message, config)

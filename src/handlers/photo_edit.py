@@ -1,9 +1,11 @@
 import logging
 
-from aiogram import Router, types
+from aiogram import Bot, Router, types
 from aiogram.filters import Command, CommandObject
 
-from bot import config, get_replied_photo_bytes, react
+from bot import get_replied_photo_bytes, react
+from config import Config
+from filters import chat_allowed, command_enabled
 from providers import ReplicateEdit
 
 logger = logging.getLogger(__name__)
@@ -11,26 +13,31 @@ router = Router()
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["edit"]),
 )
-async def handle_edit_command(message: types.Message, command: CommandObject) -> None:
+async def handle_edit_command(
+    message: types.Message,
+    command: CommandObject,
+    bot: Bot,
+    config: Config,
+) -> None:
     logger.info("Command /edit: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
-    image_bytes = await get_replied_photo_bytes(message)
+    image_bytes = await get_replied_photo_bytes(message, bot)
     if not image_bytes:
         await message.reply(
             "Reply to a photo with this command.\n"
             "Example: <code>/edit make it look like a watercolor painting</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     instruction = command.args
     if not instruction:
         await message.reply("Provide an instruction.\nExample: <code>/edit add sunglasses</code>")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -41,33 +48,38 @@ async def handle_edit_command(message: types.Message, command: CommandObject) ->
     await progress_msg.delete()
     if result.success:
         await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Edit: {instruction}")
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     else:
         await message.answer(f"Edit failed: {result.error}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["remove"]),
 )
-async def handle_remove_command(message: types.Message, command: CommandObject) -> None:
+async def handle_remove_command(
+    message: types.Message,
+    command: CommandObject,
+    bot: Bot,
+    config: Config,
+) -> None:
     logger.info("Command /remove: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
-    image_bytes = await get_replied_photo_bytes(message)
+    image_bytes = await get_replied_photo_bytes(message, bot)
     if not image_bytes:
         await message.reply(
             "Reply to a photo with this command.\n"
             "Example: <code>/remove the person in background</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     target = command.args
     if not target:
         await message.reply("What should I remove?\nExample: <code>/remove the watermark</code>")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -78,27 +90,32 @@ async def handle_remove_command(message: types.Message, command: CommandObject) 
     await progress_msg.delete()
     if result.success:
         await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Removed: {target}")
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     else:
         await message.answer(f"Remove failed: {result.error}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["replace"]),
 )
-async def handle_replace_command(message: types.Message, command: CommandObject) -> None:
+async def handle_replace_command(
+    message: types.Message,
+    command: CommandObject,
+    bot: Bot,
+    config: Config,
+) -> None:
     logger.info("Command /replace: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
-    image_bytes = await get_replied_photo_bytes(message)
+    image_bytes = await get_replied_photo_bytes(message, bot)
     if not image_bytes:
         await message.reply(
             "Reply to a photo with this command.\n"
             "Example: <code>/replace the car -> a red sports car</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     args = command.args or ""
@@ -113,12 +130,12 @@ async def handle_replace_command(message: types.Message, command: CommandObject)
             "Use format: <code>/replace old -> new</code>\n"
             "Example: <code>/replace the sky -> a sunset sky</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     if not target or not replacement:
         await message.reply("Both target and replacement are required.")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -132,24 +149,28 @@ async def handle_replace_command(message: types.Message, command: CommandObject)
             types.URLInputFile(result.image_url),
             caption=f"Replaced: {target} → {replacement}",
         )
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     else:
         await message.answer(f"Replace failed: {result.error}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["remove_bg"]),
 )
-async def handle_remove_bg_command(message: types.Message) -> None:
+async def handle_remove_bg_command(
+    message: types.Message,
+    bot: Bot,
+    config: Config,
+) -> None:
     logger.info("Command /remove_bg: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
-    image_bytes = await get_replied_photo_bytes(message)
+    image_bytes = await get_replied_photo_bytes(message, bot)
     if not image_bytes:
         await message.reply("Reply to a photo with this command.")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -160,27 +181,32 @@ async def handle_remove_bg_command(message: types.Message) -> None:
     await progress_msg.delete()
     if result.success:
         await message.answer_photo(types.URLInputFile(result.image_url), caption="Background removed")
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     else:
         await message.answer(f"Remove background failed: {result.error}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
 
 
 @router.message(
-    config.filter_chat_allowed,
-    config.filter_command_not_disabled_for_chat,
+    chat_allowed,
+    command_enabled,
     Command(commands=["background", "bg"]),
 )
-async def handle_background_command(message: types.Message, command: CommandObject) -> None:
+async def handle_background_command(
+    message: types.Message,
+    command: CommandObject,
+    bot: Bot,
+    config: Config,
+) -> None:
     logger.info("Command /background: chat_id=%s, user=%s", message.chat.id, message.from_user.username)
 
-    image_bytes = await get_replied_photo_bytes(message)
+    image_bytes = await get_replied_photo_bytes(message, bot)
     if not image_bytes:
         await message.reply(
             "Reply to a photo with this command.\n"
             "Example: <code>/bg sunset beach</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     new_bg = command.args
@@ -190,7 +216,7 @@ async def handle_background_command(message: types.Message, command: CommandObje
             "Example: <code>/bg a cozy coffee shop</code>\n"
             "To just remove background, use <code>/remove_bg</code>"
         )
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("upload_photo")
@@ -201,7 +227,7 @@ async def handle_background_command(message: types.Message, command: CommandObje
     await progress_msg.delete()
     if result.success:
         await message.answer_photo(types.URLInputFile(result.image_url), caption=f"Background: {new_bg}")
-        await react(success=True, message=message)
+        await react(success=True, message=message, config=config)
     else:
         await message.answer(f"Background replace failed: {result.error}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)

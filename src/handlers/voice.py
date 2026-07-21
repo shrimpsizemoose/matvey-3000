@@ -1,13 +1,16 @@
 import logging
 import time as time_module
 
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from aiogram.filters import Command, CommandObject
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot import bot, config, message_store, react
+from bot import react
+from config import Config
+from filters import voice_enabled
 import metrics
-from providers import AudioResponse
+from message_store import MessageStore
+from providers import AudioResponse, ProviderDependencies
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -17,9 +20,14 @@ MAX_VOICE_DURATION_SECONDS = 300
 
 @router.message(
     F.voice,
-    config.filter_voice_enabled,
+    voice_enabled,
 )
-async def handle_voice_message(message: types.Message) -> None:
+async def handle_voice_message(
+    message: types.Message,
+    bot: Bot,
+    config: Config,
+    providers: ProviderDependencies,
+) -> None:
     logger.info(
         "Voice message received: chat_id=%s, user=%s, duration=%s",
         message.chat.id,
@@ -34,7 +42,7 @@ async def handle_voice_message(message: types.Message) -> None:
             f"Max duration: {MAX_VOICE_DURATION_SECONDS // 60} minutes."
         )
         metrics.requests_total.labels(command='voice', status='rejected').inc()
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("typing")
@@ -44,7 +52,11 @@ async def handle_voice_message(message: types.Message) -> None:
         file_bytes = await bot.download_file(file.file_path)
         audio_data = file_bytes.read()
 
-        response = await AudioResponse.transcribe(audio_data, filename="voice.ogg")
+        response = await AudioResponse.transcribe(
+            providers,
+            audio_data,
+            filename="voice.ogg",
+        )
 
         if response.success:
             transcription = response.data
@@ -56,7 +68,7 @@ async def handle_voice_message(message: types.Message) -> None:
             metrics.requests_total.labels(command='voice', status='success').inc()
             metrics.voice_duration_total.inc(message.voice.duration)
             await message.reply(f"<b>Transcription:</b>\n{transcription}")
-            await react(success=True, message=message)
+            await react(success=True, message=message, config=config)
         else:
             logger.warning(
                 "Voice transcription failed for chat_id=%s: %s",
@@ -65,23 +77,28 @@ async def handle_voice_message(message: types.Message) -> None:
             )
             metrics.requests_total.labels(command='voice', status='error').inc()
             await message.reply(f"Transcription failed: {response.data}")
-            await react(success=False, message=message)
+            await react(success=False, message=message, config=config)
 
     except Exception as e:
         logger.error("Voice transcription error: %s", e, exc_info=True)
         metrics.requests_total.labels(command='voice', status='error').inc()
         metrics.errors_total.labels(error_type='exception').inc()
         await message.reply(f"Error: {e}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     finally:
         metrics.request_duration.labels(command='voice').observe(time_module.perf_counter() - start_time)
 
 
 @router.message(
     F.video_note,
-    config.filter_voice_enabled,
+    voice_enabled,
 )
-async def handle_video_note_message(message: types.Message) -> None:
+async def handle_video_note_message(
+    message: types.Message,
+    bot: Bot,
+    config: Config,
+    providers: ProviderDependencies,
+) -> None:
     logger.info(
         "Video note received: chat_id=%s, user=%s, duration=%s",
         message.chat.id,
@@ -96,7 +113,7 @@ async def handle_video_note_message(message: types.Message) -> None:
             f"Max duration: {MAX_VOICE_DURATION_SECONDS // 60} minutes."
         )
         metrics.requests_total.labels(command='video_note', status='rejected').inc()
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("typing")
@@ -106,7 +123,11 @@ async def handle_video_note_message(message: types.Message) -> None:
         file_bytes = await bot.download_file(file.file_path)
         video_data = file_bytes.read()
 
-        response = await AudioResponse.transcribe(video_data, filename="video_note.mp4")
+        response = await AudioResponse.transcribe(
+            providers,
+            video_data,
+            filename="video_note.mp4",
+        )
 
         if response.success:
             transcription = response.data
@@ -118,7 +139,7 @@ async def handle_video_note_message(message: types.Message) -> None:
             metrics.requests_total.labels(command='video_note', status='success').inc()
             metrics.voice_duration_total.inc(message.video_note.duration)
             await message.reply(f"<b>Transcription:</b>\n{transcription}")
-            await react(success=True, message=message)
+            await react(success=True, message=message, config=config)
         else:
             logger.warning(
                 "Video note transcription failed for chat_id=%s: %s",
@@ -127,19 +148,23 @@ async def handle_video_note_message(message: types.Message) -> None:
             )
             metrics.requests_total.labels(command='video_note', status='error').inc()
             await message.reply(f"Transcription failed: {response.data}")
-            await react(success=False, message=message)
+            await react(success=False, message=message, config=config)
 
     except Exception as e:
         logger.error("Video note transcription error: %s", e, exc_info=True)
         metrics.requests_total.labels(command='video_note', status='error').inc()
         metrics.errors_total.labels(error_type='exception').inc()
         await message.reply(f"Error: {e}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     finally:
         metrics.request_duration.labels(command='video_note').observe(time_module.perf_counter() - start_time)
 
 
-def get_tts_voice_keyboard(current_voice: str, original_message_id: int) -> types.InlineKeyboardMarkup:
+def get_tts_voice_keyboard(
+    current_voice: str,
+    original_message_id: int,
+    config: Config,
+) -> types.InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for voice in config.TTS_VOICES:
         if voice == current_voice:
@@ -150,7 +175,11 @@ def get_tts_voice_keyboard(current_voice: str, original_message_id: int) -> type
     return builder.as_markup()
 
 
-def parse_tts_voice_and_text(args: str, default_voice: str) -> tuple[str, str]:
+def parse_tts_voice_and_text(
+    args: str,
+    default_voice: str,
+    config: Config,
+) -> tuple[str, str]:
     if not args:
         return default_voice, ""
 
@@ -167,10 +196,16 @@ def parse_tts_voice_and_text(args: str, default_voice: str) -> tuple[str, str]:
 
 
 @router.message(
-    config.filter_voice_enabled,
+    voice_enabled,
     Command(commands=["tts"]),
 )
-async def handle_tts_command(message: types.Message, command: CommandObject) -> None:
+async def handle_tts_command(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    message_store: MessageStore,
+    providers: ProviderDependencies,
+) -> None:
     logger.info(
         "Command /tts received from chat_id=%s user=%s",
         message.chat.id,
@@ -179,7 +214,7 @@ async def handle_tts_command(message: types.Message, command: CommandObject) -> 
     start_time = time_module.perf_counter()
 
     chat_config = config[message.chat.id]
-    voice, text = parse_tts_voice_and_text(command.args, chat_config.tts_voice)
+    voice, text = parse_tts_voice_and_text(command.args, chat_config.tts_voice, config)
 
     if not text:
         voices_list = ", ".join(config.TTS_VOICES)
@@ -190,13 +225,13 @@ async def handle_tts_command(message: types.Message, command: CommandObject) -> 
             f"Available voices: {voices_list}"
         )
         metrics.requests_total.labels(command='tts', status='rejected').inc()
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
         return
 
     await message.chat.do("record_voice")
 
     try:
-        response = await AudioResponse.text_to_speech(text, voice=voice)
+        response = await AudioResponse.text_to_speech(providers, text, voice=voice)
 
         if response.success:
             audio_data = response.data
@@ -217,9 +252,9 @@ async def handle_tts_command(message: types.Message, command: CommandObject) -> 
             )
 
             voice_file = types.BufferedInputFile(audio_data, filename="speech.ogg")
-            keyboard = get_tts_voice_keyboard(voice, message.message_id)
+            keyboard = get_tts_voice_keyboard(voice, message.message_id, config)
             await message.reply_voice(voice_file, reply_markup=keyboard)
-            await react(success=True, message=message)
+            await react(success=True, message=message, config=config)
         else:
             logger.warning(
                 "TTS failed for chat_id=%s: %s",
@@ -228,20 +263,25 @@ async def handle_tts_command(message: types.Message, command: CommandObject) -> 
             )
             metrics.requests_total.labels(command='tts', status='error').inc()
             await message.reply(f"TTS failed: {response.data}")
-            await react(success=False, message=message)
+            await react(success=False, message=message, config=config)
 
     except Exception as e:
         logger.error("TTS error: %s", e, exc_info=True)
         metrics.requests_total.labels(command='tts', status='error').inc()
         metrics.errors_total.labels(error_type='exception').inc()
         await message.reply(f"Error: {e}")
-        await react(success=False, message=message)
+        await react(success=False, message=message, config=config)
     finally:
         metrics.request_duration.labels(command='tts').observe(time_module.perf_counter() - start_time)
 
 
 @router.callback_query(F.data.startswith("tts:"))
-async def handle_tts_voice_callback(callback: types.CallbackQuery) -> None:
+async def handle_tts_voice_callback(
+    callback: types.CallbackQuery,
+    config: Config,
+    message_store: MessageStore,
+    providers: ProviderDependencies,
+) -> None:
     _, voice, original_msg_id = callback.data.split(":")
     original_msg_id = int(original_msg_id)
 
@@ -260,11 +300,11 @@ async def handle_tts_voice_callback(callback: types.CallbackQuery) -> None:
     await callback.message.chat.do("record_voice")
 
     try:
-        response = await AudioResponse.text_to_speech(text, voice=voice)
+        response = await AudioResponse.text_to_speech(providers, text, voice=voice)
 
         if response.success:
             voice_file = types.BufferedInputFile(response.data, filename="speech.ogg")
-            keyboard = get_tts_voice_keyboard(voice, original_msg_id)
+            keyboard = get_tts_voice_keyboard(voice, original_msg_id, config)
             await callback.message.answer_voice(voice_file, reply_markup=keyboard)
         else:
             await callback.message.answer(f"TTS failed: {response.data}")

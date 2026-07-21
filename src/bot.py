@@ -5,25 +5,31 @@ import collections
 import logging
 import os
 import random
+from dataclasses import dataclass
 
-from aiogram import Bot, Dispatcher, F, Router, html, types
+import anthropic
+import openai
+from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.redis import RedisStorage
 
-from config import Config
 import metrics
+from config import Config
+from conversation import ConversationProviderRegistry, OpenAIConversationProvider
 from message_store import MessageStore
-
-API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
+from providers import ProviderDependencies, ProviderSettings
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-bot_props = DefaultBotProperties(parse_mode="HTML")
-bot = Bot(token=API_TOKEN, default=bot_props)
-message_store = MessageStore.from_env()
-config = Config.read_toml(path=os.getenv("BOT_CONFIG_TOML"))
+
+@dataclass(frozen=True)
+class ApplicationDependencies:
+    bot: Bot
+    config: Config
+    message_store: MessageStore
+    providers: ProviderDependencies
 
 
 def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
@@ -49,15 +55,16 @@ def extract_message_chain(last_message_in_thread: types.Message, bot_id: int):
     return [(role, text) for role, text in payload]
 
 
-async def react(success: bool, message: types.Message):
-    yes = config.positive_emojis
-    nope = config.negative_emojis
-    emoji = random.choice(yes) if success else random.choice(nope)
-    reaction = types.reaction_type_emoji.ReactionTypeEmoji(type="emoji", emoji=emoji)
+async def react(success: bool, message: types.Message, config: Config):
+    emojis = config.positive_emojis if success else config.negative_emojis
+    reaction = types.reaction_type_emoji.ReactionTypeEmoji(
+        type='emoji',
+        emoji=random.choice(emojis),
+    )
     await message.react(reaction=[reaction])
 
 
-async def get_replied_photo_bytes(message: types.Message) -> bytes | None:
+async def get_replied_photo_bytes(message: types.Message, bot: Bot) -> bytes | None:
     """Extract photo bytes from replied-to message."""
     reply = message.reply_to_message
     if not reply or not reply.photo:
@@ -68,7 +75,45 @@ async def get_replied_photo_bytes(message: types.Message) -> bytes | None:
     return file_bytes.read()
 
 
+def create_dependencies_from_env() -> ApplicationDependencies:
+    bot = Bot(
+        token=os.environ['TELEGRAM_API_TOKEN'],
+        default=DefaultBotProperties(parse_mode='HTML'),
+    )
+    config = Config.read_toml(path=os.environ['BOT_CONFIG_TOML'])
+    message_store = MessageStore(os.environ['REDIS_URL'])
+    openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+    anthropic_client = anthropic.AsyncAnthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+    conversation_providers = ConversationProviderRegistry()
+    conversation_providers.register(
+        'openai',
+        OpenAIConversationProvider(openai_client),
+    )
+    providers = ProviderDependencies(
+        conversation_providers=conversation_providers,
+        openai_client=openai_client,
+        anthropic_client=anthropic_client,
+        settings=ProviderSettings(
+            yandex_folder_id=os.getenv('YANDEXGPT_FOLDER_ID', 'NoYaFolder'),
+            yandex_api_key=os.getenv('YANDEXGPT_API_KEY', 'NoYaKey'),
+            kandinski_api_key=os.getenv('KANDINSKI_API_KEY', 'KandiKeyOopsie'),
+            kandinski_api_secret=os.getenv('KANDINSKI_API_SECRET', 'KandiSecretOopsie'),
+        ),
+    )
+    return ApplicationDependencies(
+        bot=bot,
+        config=config,
+        message_store=message_store,
+        providers=providers,
+    )
+
+
 async def main() -> None:
+    dependencies = create_dependencies_from_env()
+    bot = dependencies.bot
+    config = dependencies.config
+    message_store = dependencies.message_store
+    providers = dependencies.providers
     logger.info(
         "Starting bot with config version=%s, bot_username=%s",
         config.version,
@@ -89,14 +134,20 @@ async def main() -> None:
     )
     logger.info("FSM storage initialized with prefix=%s", fsm_prefix)
 
-    # Import handlers and include routers
     from handlers import include_all_routers
 
     dp = Dispatcher(storage=storage)
+    dp['config'] = config
+    dp['message_store'] = message_store
+    dp['providers'] = providers
     include_all_routers(dp)
 
-    logger.info("Bot polling started")
-    await dp.start_polling(bot)
+    logger.info('Bot polling started')
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await providers.openai_client.close()
+        await providers.anthropic_client.close()
 
 
 if __name__ == "__main__":

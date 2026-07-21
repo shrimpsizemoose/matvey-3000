@@ -3,14 +3,17 @@ import logging
 from aiogram import Router, html, types
 from aiogram.filters import Command, CommandObject
 
-from bot import config, message_store, react
+from bot import react
+from config import Config
+from filters import chat_allowed, command_enabled, is_admin
+from message_store import MessageStore
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
+    command_enabled,
     Command(commands=["blerb"], ignore_mention=True),
 )
 async def dump_message_info(message: types.Message):
@@ -23,10 +26,10 @@ async def dump_message_info(message: types.Message):
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
+    command_enabled,
     Command(commands=["mode_claude"], ignore_mention=True),
 )
-async def switch_to_claude(message: types.Message):
+async def switch_to_claude(message: types.Message, config: Config):
     logger.info(
         "Command /mode_claude received from chat_id=%s user=%s",
         message.chat.id,
@@ -42,10 +45,10 @@ async def switch_to_claude(message: types.Message):
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
+    command_enabled,
     Command(commands=["mode_chatgpt"], ignore_mention=True),
 )
-async def switch_to_chatgpt(message: types.Message):
+async def switch_to_chatgpt(message: types.Message, config: Config):
     logger.info(
         "Command /mode_chatgpt received from chat_id=%s user=%s",
         message.chat.id,
@@ -61,10 +64,10 @@ async def switch_to_chatgpt(message: types.Message):
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
+    command_enabled,
     Command(commands=["mode_yandex"], ignore_mention=True),
 )
-async def switch_to_yandexgpt(message: types.Message):
+async def switch_to_yandexgpt(message: types.Message, config: Config):
     logger.info(
         "Command /mode_yandex received from chat_id=%s user=%s",
         message.chat.id,
@@ -79,8 +82,12 @@ async def switch_to_yandexgpt(message: types.Message):
     await message.reply(f"🤖теперь я на мозгах {config.PROVIDER_YANDEXGPT}!")
 
 
-@router.message(config.filter_chat_allowed, Command(commands=["prompt"]))
-async def dump_set_prompt(message: types.Message, command: CommandObject):
+@router.message(chat_allowed, Command(commands=['prompt']))
+async def dump_set_prompt(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+):
     logger.info(
         "Command /prompt received from chat_id=%s user=%s",
         message.chat.id,
@@ -111,11 +118,15 @@ async def dump_set_prompt(message: types.Message, command: CommandObject):
 
 
 @router.message(
-    config.filter_command_not_disabled_for_chat,
-    config.filter_chat_allowed,
+    command_enabled,
+    chat_allowed,
     Command(commands=["new_chat"]),
 )
-async def handle_new_chat(message: types.Message):
+async def handle_new_chat(
+    message: types.Message,
+    config: Config,
+    message_store: MessageStore,
+):
     logger.info(
         "Command /new_chat received from chat_id=%s user=%s",
         message.chat.id,
@@ -133,11 +144,16 @@ async def handle_new_chat(message: types.Message):
         f"🔄 Conversation history cleared! ({deleted_count} messages removed)\n"
         f"Starting fresh conversation."
     )
-    await react(success=True, message=message)
+    await react(success=True, message=message, config=config)
 
 
-@router.message(config.filter_is_admin, Command(commands=["admin_stats"]))
-async def handle_stats_command(message: types.Message, command: CommandObject):
+@router.message(is_admin, Command(commands=['admin_stats']))
+async def handle_stats_command(
+    message: types.Message,
+    command: CommandObject,
+    config: Config,
+    message_store: MessageStore,
+):
     logger.info(
         "Command /admin_stats received from chat_id=%s user=%s",
         message.chat.id,
