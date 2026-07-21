@@ -46,8 +46,12 @@ class TextResponse:
     async def generate(cls, config, chat_id, messages):
         provider = config.provider_for_chat_id(chat_id)
         model = config.model_for_chat_id(chat_id)
-        logger.debug('Generating text response: provider=%s, model=%s, message_count=%d',
-                     provider, model, len(messages))
+        logger.debug(
+            'Generating text response: provider=%s, model=%s, message_count=%d',
+            provider,
+            model,
+            len(messages),
+        )
         if provider == config.PROVIDER_OPENAI:
             result = await conversation_providers.get(provider).generate(
                 model=model,
@@ -75,7 +79,9 @@ class TextResponse:
 
     @classmethod
     async def _generate_anthropic(cls, client, model, messages):
-        logger.debug('Anthropic request: model=%s, message_count=%d', model, len(messages))
+        logger.debug(
+            'Anthropic request: model=%s, message_count=%d', model, len(messages)
+        )
         user_tag = anthropic.HUMAN_PROMPT
         bot_tag = anthropic.AI_PROMPT
         system = [text for role, text in messages if role == 'system'][0]
@@ -127,9 +133,12 @@ class TextResponse:
                 text=f'Кажется у меня сбоит сеть. Ты попробуй позже, а я пока схожу чаю выпью.\n\n{e}',  # noqa
             )
         else:
-            completion = response.completion.replace("<", "[").replace(">", "]")
-            logger.debug('Anthropic response received: model=%s, response_length=%d',
-                         model, len(completion))
+            completion = response.completion.replace('<', '[').replace('>', ']')
+            logger.debug(
+                'Anthropic response received: model=%s, response_length=%d',
+                model,
+                len(completion),
+            )
             return cls(
                 success=True,
                 text=completion,
@@ -137,14 +146,16 @@ class TextResponse:
 
     @classmethod
     async def _generate_yandexgpt(cls, client, model, messages):
-        logger.debug('YandexGPT request: model=%s, message_count=%d', model, len(messages))
+        logger.debug(
+            'YandexGPT request: model=%s, message_count=%d', model, len(messages)
+        )
         params = {
             'messages': [{'role': role, 'text': text} for role, text in messages],
             'modelUri': f'gpt://{yagpt_folder_id}/{model}',
             'completionOptions': {
                 'stream': False,
                 'temperature': 0.6,
-                'maxTokens': "1000",
+                'maxTokens': '1000',
             },
         }
         headers = {
@@ -159,14 +170,21 @@ class TextResponse:
         if response.status_code == 200:
             data = response.json()
             text = data['result']['alternatives'][0]['message']['text']
-            logger.debug('YandexGPT response received: model=%s, response_length=%d', model, len(text))
+            logger.debug(
+                'YandexGPT response received: model=%s, response_length=%d',
+                model,
+                len(text),
+            )
             return cls(
                 success=True,
                 text=text,
             )
         else:
-            logger.error('YandexGPT request failed: status_code=%d, response=%s',
-                         response.status_code, response.text[:200])
+            logger.error(
+                'YandexGPT request failed: status_code=%d, response=%s',
+                response.status_code,
+                response.text[:200],
+            )
             return cls(
                 success=False,
                 text=response.text,
@@ -175,9 +193,15 @@ class TextResponse:
 
 async def speedup_audio(audio_bytes: bytes, factor: float = 2.0) -> bytes:
     proc = await asyncio.create_subprocess_exec(
-        'ffmpeg', '-i', 'pipe:0',
-        '-filter:a', f'atempo={factor}',
-        '-c:a', 'libopus', '-f', 'ogg',
+        'ffmpeg',
+        '-i',
+        'pipe:0',
+        '-filter:a',
+        f'atempo={factor}',
+        '-c:a',
+        'libopus',
+        '-f',
+        'ogg',
         'pipe:1',
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
@@ -189,7 +213,9 @@ async def speedup_audio(audio_bytes: bytes, factor: float = 2.0) -> bytes:
         logger.warning('ffmpeg speedup failed: %s', stderr.decode())
         return audio_bytes
 
-    logger.info('Audio sped up %.1fx: %d -> %d bytes', factor, len(audio_bytes), len(stdout))
+    logger.info(
+        'Audio sped up %.1fx: %d -> %d bytes', factor, len(audio_bytes), len(stdout)
+    )
     return stdout
 
 
@@ -205,8 +231,11 @@ class AudioResponse:
         filename: str = 'audio.ogg',
         speedup: float | None = None,
     ):
-        logger.info('Audio transcription requested: size=%d bytes, filename=%s',
-                    len(audio_bytes), filename)
+        logger.info(
+            'Audio transcription requested: size=%d bytes, filename=%s',
+            len(audio_bytes),
+            filename,
+        )
 
         if speedup and speedup > 1.0:
             audio_bytes = await speedup_audio(audio_bytes, speedup)
@@ -219,14 +248,22 @@ class AudioResponse:
                         file=(filename, audio_bytes),
                     )
                     text = response.text
-                    logger.info('Audio transcription successful: length=%d chars', len(text))
+                    logger.info(
+                        'Audio transcription successful: length=%d chars', len(text)
+                    )
                     return cls(success=True, data=text)
                 except openai.RateLimitError as e:
                     if attempt == 2:
-                        logger.warning('Audio transcription RateLimitError after retries: %s', e)
+                        logger.warning(
+                            'Audio transcription RateLimitError after retries: %s', e
+                        )
                         return cls(success=False, data=f'Рейт-лимит превышен: {e}')
-                    backoff = 2 ** attempt  # 1s, 2s, 4s
-                    logger.info('Rate limited, retrying in %ds (attempt %d/3)', backoff, attempt + 1)
+                    backoff = 2**attempt  # 1s, 2s, 4s
+                    logger.info(
+                        'Rate limited, retrying in %ds (attempt %d/3)',
+                        backoff,
+                        attempt + 1,
+                    )
                     await asyncio.sleep(backoff)
                 except openai.BadRequestError as e:
                     logger.warning('Audio transcription BadRequestError: %s', e)
@@ -242,12 +279,15 @@ class AudioResponse:
         voice: str = 'alloy',
         model: str = 'tts-1',
     ):
-        logger.info('TTS requested: text_length=%d, voice=%s, model=%s',
-                    len(text), voice, model)
+        logger.info(
+            'TTS requested: text_length=%d, voice=%s, model=%s', len(text), voice, model
+        )
 
         if len(text) > 4096:
             logger.warning('TTS text too long: %d chars', len(text))
-            return cls(success=False, data='Текст слишком длинный (макс. 4096 символов)')
+            return cls(
+                success=False, data='Текст слишком длинный (макс. 4096 символов)'
+            )
 
         client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
@@ -280,25 +320,32 @@ class ImageResponse:
 
     @classmethod
     async def edit(cls, image_bytes: bytes, prompt: str):
-        logger.info('Image edit requested: prompt_length=%d, image_size=%d bytes',
-                    len(prompt or ''), len(image_bytes))
+        logger.info(
+            'Image edit requested: prompt_length=%d, image_size=%d bytes',
+            len(prompt or ''),
+            len(image_bytes),
+        )
         client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         try:
             response = await client.images.edit(
-                model="dall-e-2",
-                image=("image.png", image_bytes, "image/png"),
+                model='dall-e-2',
+                image=('image.png', image_bytes, 'image/png'),
                 prompt=prompt,
                 n=1,
-                size="512x512",
+                size='512x512',
             )
             logger.info('Image edit successful')
             return cls(success=True, b64_or_url=response.data[0].url)
         except openai.BadRequestError as e:
             logger.warning('Image edit BadRequestError: %s', e)
-            return cls(success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}')
+            return cls(
+                success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}'
+            )
         except openai.RateLimitError as e:
             logger.warning('Image edit RateLimitError: %s', e)
-            return cls(success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}')
+            return cls(
+                success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}'
+            )
         except TimeoutError as e:
             logger.error('Image edit TimeoutError: %s', e)
             return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
@@ -323,7 +370,9 @@ class ImageResponse:
         """
         logger.info(
             'Image edit with mask requested: prompt_length=%d, image_size=%d, mask_size=%d',
-            len(prompt or ''), len(image_bytes), len(mask_bytes)
+            len(prompt or ''),
+            len(image_bytes),
+            len(mask_bytes),
         )
         client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         try:
@@ -339,10 +388,14 @@ class ImageResponse:
             return cls(success=True, b64_or_url=response.data[0].url)
         except openai.BadRequestError as e:
             logger.warning('Image edit with mask BadRequestError: %s', e)
-            return cls(success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}')
+            return cls(
+                success=False, b64_or_url=f'Не удалось отредактировать картинку: {e}'
+            )
         except openai.RateLimitError as e:
             logger.warning('Image edit with mask RateLimitError: %s', e)
-            return cls(success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}')
+            return cls(
+                success=False, b64_or_url=f'Рейт-лимит превышен, попробуй позже: {e}'
+            )
         except TimeoutError as e:
             logger.error('Image edit with mask TimeoutError: %s', e)
             return cls(success=False, b64_or_url=f'Таймаут сети, попробуй позже: {e}')
@@ -378,7 +431,7 @@ class ImageResponse:
                             'including: subject matter, composition, colors, style, mood, '
                             'lighting, and any notable elements. Be specific enough that '
                             'the description could be used to recreate a similar image.'
-                        )
+                        ),
                     },
                     {
                         'role': 'user',
@@ -388,14 +441,11 @@ class ImageResponse:
                                 'image_url': {
                                     'url': f'data:image/jpeg;base64,{b64_image}',
                                     'detail': 'auto',
-                                }
+                                },
                             },
-                            {
-                                'type': 'text',
-                                'text': 'Describe this image in detail.'
-                            }
-                        ]
-                    }
+                            {'type': 'text', 'text': 'Describe this image in detail.'},
+                        ],
+                    },
                 ],
                 max_tokens=1000,
             )
@@ -404,7 +454,9 @@ class ImageResponse:
             return TextResponse(success=True, text=description)
         except openai.BadRequestError as e:
             logger.warning('Image description BadRequestError: %s', e)
-            return TextResponse(success=False, text=f'Не удалось проанализировать картинку: {e}')
+            return TextResponse(
+                success=False, text=f'Не удалось проанализировать картинку: {e}'
+            )
         except openai.RateLimitError as e:
             logger.warning('Image description RateLimitError: %s', e)
             return TextResponse(success=False, text=f'Рейт-лимит превышен: {e}')
@@ -433,8 +485,11 @@ class ImageResponse:
         Returns:
             ImageResponse with URL to new image
         """
-        logger.info('Reimagine requested: image_size=%d, mod_length=%d',
-                    len(image_bytes), len(modification_prompt))
+        logger.info(
+            'Reimagine requested: image_size=%d, mod_length=%d',
+            len(image_bytes),
+            len(modification_prompt),
+        )
 
         # Step 1: Describe the image
         description_response = await cls.describe_image(image_bytes)
@@ -458,7 +513,7 @@ class ImageResponse:
                             'create a new prompt that combines both. The result should be a '
                             'detailed, vivid description suitable for image generation. '
                             'Keep it under 1000 characters. Output ONLY the prompt, no explanation.'
-                        )
+                        ),
                     },
                     {
                         'role': 'user',
@@ -466,8 +521,8 @@ class ImageResponse:
                             f'Original image description:\n{original_description}\n\n'
                             f'Modification request:\n{modification_prompt}\n\n'
                             'Create a new image generation prompt that applies the modification.'
-                        )
-                    }
+                        ),
+                    },
                 ],
                 max_tokens=500,
             )
@@ -484,13 +539,21 @@ class ImageResponse:
 
     @classmethod
     async def generate(cls, prompt, mode='dall-e'):
-        logger.info('Image generation requested: mode=%s, prompt_length=%d', mode, len(prompt or ''))
+        logger.info(
+            'Image generation requested: mode=%s, prompt_length=%d',
+            mode,
+            len(prompt or ''),
+        )
         openai_client = openai.AsyncOpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         match mode:
             case 'dall-e':
-                return await cls._generate_dalle(openai_client, prompt, model='dall-e-2', size='512x512')
+                return await cls._generate_dalle(
+                    openai_client, prompt, model='dall-e-2', size='512x512'
+                )
             case 'dall-e-3':
-                return await cls._generate_dalle(openai_client, prompt, model='dall-e-3', size='1024x1024')
+                return await cls._generate_dalle(
+                    openai_client, prompt, model='dall-e-3', size='1024x1024'
+                )
             case 'kandinski':
                 async with httpx.AsyncClient() as httpx_client:
                     return await cls._generate_kandinski(httpx_client, prompt)
@@ -500,7 +563,9 @@ class ImageResponse:
 
     @classmethod
     async def _generate_dalle(cls, client, prompt, model='dall-e-2', size='512x512'):
-        logger.debug('DALL-E request: model=%s, size=%s, prompt=%r', model, size, prompt)
+        logger.debug(
+            'DALL-E request: model=%s, size=%s, prompt=%r', model, size, prompt
+        )
         img_gen_reply = await client.images.generate(
             model=model,
             prompt=prompt,
@@ -557,12 +622,20 @@ class ImageResponse:
             done = data['status'] == 'DONE'
             if done:
                 break
-            logger.debug('Kandinski generation in progress: run_id=%s, attempts_remaining=%d', run_id, attempts)
+            logger.debug(
+                'Kandinski generation in progress: run_id=%s, attempts_remaining=%d',
+                run_id,
+                attempts,
+            )
             attempts -= 1
             await asyncio.sleep(delay)
 
         if done:
-            logger.info('Kandinski image generated: run_id=%s, censored=%s', run_id, data['censored'])
+            logger.info(
+                'Kandinski image generated: run_id=%s, censored=%s',
+                run_id,
+                data['censored'],
+            )
         else:
             logger.warning('Kandinski generation timed out: run_id=%s', run_id)
 
@@ -583,6 +656,7 @@ class ReplicateEdit:
     @staticmethod
     def _get_config():
         from config import Config
+
         return Config
 
     @classmethod
@@ -593,7 +667,11 @@ class ReplicateEdit:
     @classmethod
     async def edit(cls, image_bytes: bytes, instruction: str) -> 'ReplicateEdit':
         """Edit image using InstructPix2Pix - natural language instructions."""
-        logger.info('Replicate edit: instruction=%r, image_size=%d', instruction[:50], len(image_bytes))
+        logger.info(
+            'Replicate edit: instruction=%r, image_size=%d',
+            instruction[:50],
+            len(image_bytes),
+        )
         try:
             output = await replicate.async_run(
                 cls._get_config().REPLICATE_MODEL_EDIT,
@@ -629,21 +707,35 @@ class ReplicateEdit:
             return cls(success=False, image_url=None, error=str(e))
 
     @classmethod
-    async def replace_background(cls, image_bytes: bytes, new_background: str) -> 'ReplicateEdit':
+    async def replace_background(
+        cls, image_bytes: bytes, new_background: str
+    ) -> 'ReplicateEdit':
         """Replace background using instruction-based editing."""
-        logger.info('Replicate replace_bg: prompt=%r, image_size=%d', new_background[:50], len(image_bytes))
+        logger.info(
+            'Replicate replace_bg: prompt=%r, image_size=%d',
+            new_background[:50],
+            len(image_bytes),
+        )
         instruction = f'change the background to {new_background}'
         return await cls.edit(image_bytes, instruction)
 
     @classmethod
-    async def remove_object(cls, image_bytes: bytes, object_description: str) -> 'ReplicateEdit':
+    async def remove_object(
+        cls, image_bytes: bytes, object_description: str
+    ) -> 'ReplicateEdit':
         """Remove object using instruction-based editing (via instruct-pix2pix)."""
-        logger.info('Replicate remove_object: target=%r, image_size=%d', object_description, len(image_bytes))
+        logger.info(
+            'Replicate remove_object: target=%r, image_size=%d',
+            object_description,
+            len(image_bytes),
+        )
         instruction = f'remove {object_description}'
         return await cls.edit(image_bytes, instruction)
 
     @classmethod
-    async def replace_object(cls, image_bytes: bytes, target: str, replacement: str) -> 'ReplicateEdit':
+    async def replace_object(
+        cls, image_bytes: bytes, target: str, replacement: str
+    ) -> 'ReplicateEdit':
         """Replace specific object with another using instruction-based editing."""
         logger.info('Replicate replace_object: %r -> %r', target, replacement)
         instruction = f'replace {target} with {replacement}'
